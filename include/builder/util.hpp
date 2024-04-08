@@ -242,7 +242,10 @@ struct minimizers_tuples {
     }
 
     std::string get_minimizers_filename() const {
-        assert(m_num_files_to_merge > 0);
+        //assert(m_num_files_to_merge > 0);
+        if(!(m_num_files_to_merge > 0)){
+            throw std::invalid_argument("m_num_files_to_merge > 0");
+        }
         if (m_num_files_to_merge == 1) return get_tmp_output_filename(0);
         std::stringstream filename;
         filename << m_tmp_dirname << "/sshash.tmp.run_" << m_run_identifier << ".minimizers.bin";

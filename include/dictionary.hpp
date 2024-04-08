@@ -22,6 +22,7 @@ struct dictionary {
     uint64_t k() const { return m_k; }
     uint64_t m() const { return m_m; }
     uint64_t num_contigs() const { return m_buckets.pieces.size() - 1; }
+    uint64_t num_superkmers() const { return m_buckets.offsets.size(); }
     bool canonicalized() const { return m_canonical_parsing; }
     bool weighted() const { return !m_weights.empty(); }
 
@@ -92,6 +93,8 @@ struct dictionary {
     void print_space_breakdown() const;
     void compute_statistics() const;
 
+    void superkmer_statistics() const;
+
     template <typename Visitor>
     void visit(Visitor& visitor) {
         visitor.visit(m_size);
@@ -104,6 +107,8 @@ struct dictionary {
         visitor.visit(m_skew_index);
         visitor.visit(m_weights);
     }
+
+    uint64_t kmer_to_superkmer_idx(std::string_view kmer) const ;
 
 private:
     uint64_t m_size;

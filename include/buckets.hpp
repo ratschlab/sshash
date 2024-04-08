@@ -103,6 +103,27 @@ struct buckets {
         }
         return lookup_result();
     }
+    // superkmer annotation
+    lookup_result superkmer_id_to_kmer_id(uint64_t super_kmer_id, uint64_t k) const {
+        uint64_t offset = offsets.access(super_kmer_id);
+        auto [res, contig_end] = offset_to_id(offset, k);
+        return res;
+    }
+    lookup_result lookup_superkmer_start(uint64_t bucket_id, kmer_t target_kmer, kmer_t target_kmer_rc,
+                                   uint64_t k, uint64_t m) const {
+        auto [begin, end] = locate_bucket(bucket_id);
+        for (uint64_t super_kmer_id = begin; super_kmer_id != end; ++super_kmer_id) {
+            if(is_valid(lookup_in_super_kmer(super_kmer_id, target_kmer, k, m)) || 
+                is_valid(lookup_in_super_kmer(super_kmer_id, target_kmer_rc, k, m))){
+                uint64_t offset = offsets.access(super_kmer_id);
+                auto [res, contig_end] = offset_to_id(offset, k);
+                return res;
+            }
+        }
+
+        return lookup_result();
+    }
+
 
     lookup_result lookup_canonical(uint64_t bucket_id, kmer_t target_kmer, kmer_t target_kmer_rc,
                                    uint64_t k, uint64_t m) const {
