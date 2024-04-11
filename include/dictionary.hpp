@@ -107,8 +107,8 @@ struct dictionary {
         visitor.visit(m_skew_index);
         visitor.visit(m_weights);
     }
-
-    uint64_t kmer_to_superkmer_idx(std::string_view kmer) const ;
+    lookup_result kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const ;
+    uint64_t kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const ;
 
 private:
     uint64_t m_size;
