@@ -1,6 +1,8 @@
 #include "dictionary.hpp"
 
 namespace sshash {
+
+//////////////////////////////////////////
 lookup_result dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const {
     uint64_t minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
     uint64_t bucket_id = m_minimizers.lookup(minimizer);
@@ -15,9 +17,10 @@ lookup_result dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const {
         uint64_t pos = m_skew_index.lookup(uint_kmer, log2_bucket_size);
         /* It must hold pos < num_super_kmers_in_bucket for the kmer to exist. */
         if (pos < num_super_kmers_in_bucket) {
-            uint64_t superkmer_id = begin + pos;
-            lookup_result res = m_buckets.superkmer_id_to_kmer_id(superkmer_id, m_k);
-            return res;
+            if(m_buckets.lookup_in_super_kmer(begin + pos, uint_kmer, m_k, m_m).kmer_id != sshash::constants::invalid_uint64){
+                uint64_t superkmer_id = begin + pos;
+                return m_buckets.superkmer_id_to_kmer_id(superkmer_id, m_k);
+            }
         }
         return lookup_result();
     }
@@ -25,24 +28,6 @@ lookup_result dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const {
     return  m_buckets.lookup_superkmer_start(begin, end, uint_kmer, m_k, m_m);
 
 }
-uint64_t dictionary::kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const {
-    // Plan:
-    // kmer -> get minimizer -> get bucket ->skew_index? -> 
-    // ->get superkmer range in offsets!!->
-    // ->get superkmer coords in offsets
-    // (+check everything makes sense on contig level)
-    // reverse complement considerations: primary/canonical graph -> find smaller minimizer between kmer and rc_kmer
-
-    kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
-    lookup_result res = kmer_to_superkmer_idx_helper(uint_kmer);
-    if(res.kmer_id == constants::invalid_uint64 && check_reverse_complement){
-        kmer_t uint_kmer_rc = util::compute_reverse_complement(uint_kmer, m_k);
-        res = kmer_to_superkmer_idx_helper(uint_kmer_rc);
-    }
-    return res.kmer_id;
-    
-}  
-
 lookup_result dictionary::lookup_uint_regular_parsing(kmer_t uint_kmer) const {
     uint64_t minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
     uint64_t bucket_id = m_minimizers.lookup(minimizer);
@@ -110,6 +95,25 @@ lookup_result dictionary::lookup_advanced(char const* string_kmer,
     kmer_t uint_kmer = util::string_to_uint_kmer(string_kmer, m_k);
     return lookup_advanced_uint(uint_kmer, check_reverse_complement);
 }
+//////////////////////////////////////////
+uint64_t dictionary::kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const {
+    // Plan:
+    // kmer -> get minimizer -> get bucket ->skew_index? -> 
+    // ->get superkmer range in offsets!!->
+    // ->get superkmer coords in offsets
+    // (+check everything makes sense on contig level)
+    // reverse complement considerations: primary graph -> look for both minimizers of kmer and rc_kmer
+
+    kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
+    lookup_result res = kmer_to_superkmer_idx_helper(uint_kmer);
+    assert(res.kmer_orientation == constants::forward_orientation);
+    if(res.kmer_id == constants::invalid_uint64 && check_reverse_complement){
+        kmer_t uint_kmer_rc = util::compute_reverse_complement(uint_kmer, m_k);
+        res = kmer_to_superkmer_idx_helper(uint_kmer_rc);
+        res.kmer_orientation = constants::backward_orientation;
+    }
+    return res.kmer_id;
+}  
 lookup_result dictionary::lookup_advanced_uint(kmer_t uint_kmer,
                                                bool check_reverse_complement) const {
     if (m_canonical_parsing) return lookup_uint_canonical_parsing(uint_kmer);
