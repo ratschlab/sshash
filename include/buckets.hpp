@@ -111,16 +111,16 @@ struct buckets {
     }
     
 
-    lookup_result lookup_superkmer_start(uint64_t begin, uint64_t end, kmer_t target_kmer,
+    std::pair<lookup_result, uint64_t> lookup_superkmer_start(uint64_t begin, uint64_t end, kmer_t target_kmer,
                                    uint64_t k, uint64_t m) const {
         for (uint64_t super_kmer_id = begin; super_kmer_id != end; ++super_kmer_id) {
             auto res = lookup_in_super_kmer(super_kmer_id, target_kmer, k, m);
             if(res.kmer_id != constants::invalid_uint64){
                 assert(is_valid(res));
-                return superkmer_id_to_kmer_id(super_kmer_id, k);
+                return std::pair(superkmer_id_to_kmer_id(super_kmer_id, k), super_kmer_id); // CHECK THIS IS CORRECT!?!?! YES
             }
         }
-        return lookup_result();
+        return std::pair(lookup_result(), constants::invalid_uint64);
     }
 
 

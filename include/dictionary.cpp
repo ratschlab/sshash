@@ -3,7 +3,7 @@
 namespace sshash {
 
 //////////////////////////////////////////
-lookup_result dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const {
+std::pair<lookup_result, uint64_t> dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const {
     uint64_t minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
     uint64_t bucket_id = m_minimizers.lookup(minimizer);
     auto [begin, end] = m_buckets.locate_bucket(bucket_id);
@@ -19,10 +19,10 @@ lookup_result dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const {
         if (pos < num_super_kmers_in_bucket) {
             if(m_buckets.lookup_in_super_kmer(begin + pos, uint_kmer, m_k, m_m).kmer_id != sshash::constants::invalid_uint64){
                 uint64_t superkmer_id = begin + pos;
-                return m_buckets.superkmer_id_to_kmer_id(superkmer_id, m_k);
+                return std::pair(m_buckets.superkmer_id_to_kmer_id(superkmer_id, m_k), superkmer_id); // CHECK THIS IS CORRECT!?!?! YES
             }
         }
-        return lookup_result();
+        return std::pair(lookup_result(), constants::invalid_uint64);
     }
     // superkmer not in skew index
     return  m_buckets.lookup_superkmer_start(begin, end, uint_kmer, m_k, m_m);
@@ -96,7 +96,7 @@ lookup_result dictionary::lookup_advanced(char const* string_kmer,
     return lookup_advanced_uint(uint_kmer, check_reverse_complement);
 }
 //////////////////////////////////////////
-uint64_t dictionary::kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const {
+std::pair<uint64_t, uint64_t> dictionary::kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const {
     // Plan:
     // kmer -> get minimizer -> get bucket ->skew_index? -> 
     // ->get superkmer range in offsets!!->
@@ -105,14 +105,16 @@ uint64_t dictionary::kmer_to_superkmer_idx(char const* kmer_str, bool check_reve
     // reverse complement considerations: primary graph -> look for both minimizers of kmer and rc_kmer
 
     kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
-    lookup_result res = kmer_to_superkmer_idx_helper(uint_kmer);
+    auto[res, s_idx] = kmer_to_superkmer_idx_helper(uint_kmer);
     assert(res.kmer_orientation == constants::forward_orientation);
     if(res.kmer_id == constants::invalid_uint64 && check_reverse_complement){
         kmer_t uint_kmer_rc = util::compute_reverse_complement(uint_kmer, m_k);
-        res = kmer_to_superkmer_idx_helper(uint_kmer_rc);
+        auto pair = kmer_to_superkmer_idx_helper(uint_kmer_rc);
+        res = pair.first;
+        s_idx = pair.second;
         res.kmer_orientation = constants::backward_orientation;
     }
-    return res.kmer_id;
+    return std::pair(res.kmer_id, s_idx);
 }  
 lookup_result dictionary::lookup_advanced_uint(kmer_t uint_kmer,
                                                bool check_reverse_complement) const {
