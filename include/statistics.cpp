@@ -59,7 +59,7 @@ bool equal(const std::vector<std::string>& input1, const std::vector<std::string
 }
 
 std::vector<bool> dictionary::build_superkmer_bv(const std::function<std::vector<std::string> (std::string_view)> &get_annotation_labels) const {
-    uint64_t num_kmers = size();
+    //uint64_t num_kmers = size();
     uint64_t num_minimizers = m_minimizers.size();
     uint64_t num_super_kmers = m_buckets.offsets.size();
 
@@ -72,7 +72,7 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function<std::vector
     for (uint64_t bucket_id = 0; bucket_id != num_minimizers; ++bucket_id) {
         if(bucket_id%one_pc_buckets==0)std::cout << bucket_id/one_pc_buckets <<"%" << '\r'<< std::flush;
         auto [begin, end] = m_buckets.locate_bucket(bucket_id);
-        uint64_t num_super_kmers_in_bucket = end - begin;
+        //uint64_t num_super_kmers_in_bucket = end - begin;
         for (uint64_t super_kmer_id = begin; super_kmer_id != end; ++super_kmer_id) {
             uint64_t offset = m_buckets.offsets.access(super_kmer_id);
             auto [_, contig_end] = m_buckets.offset_to_id(offset, m_k);
@@ -107,8 +107,8 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function<std::vector
 		std::vector<std::string> labels = get_annotation_labels(kmer_str);
 		if(prev_labels.size() == 0){
                     prev_labels = labels;
-                } else if(non_mono_superkmer[superkmer_idx] == false && !equal(labels, prev_labels)){
-                    non_mono_superkmer[superkmer_idx] = true;
+                } else if(non_mono_superkmer[super_kmer_id] == false && !equal(labels, prev_labels)){
+                    non_mono_superkmer[super_kmer_id] = true;
                     prev_labels = labels;
                 }
             }
