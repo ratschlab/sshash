@@ -95,7 +95,7 @@ struct dictionary {
 
     void superkmer_statistics() const;
 
-    std::vector<bool> build_superkmer_bv(const std::function<std::vector<std::string> (std::string)> &get_annotation_labels) const;
+    std::vector<bool> build_superkmer_bv(const std::function<std::vector<std::string> (std::string_view)> &get_annotation_labels) const;
 
     template <typename Visitor>
     void visit(Visitor& visitor) {
