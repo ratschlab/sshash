@@ -46,12 +46,12 @@ void dictionary::compute_statistics() const {
     buckets_stats.print_full();
     std::cout << "DONE" << std::endl;
 }
-bool equal(const std::vector<std::string>& input1, const std::vector<std::string>& input2) {
+inline bool equal(const std::vector<std::string>& input1, const std::vector<std::string>& input2) {
     if(input1.size() != input2.size()){
         return false;
     }
     for(size_t i = 0; i < input1.size(); i++){
-        if(input1.at(i) != input2.at(i)){
+        if(input1[i] != input2[i]){
             return false;
         }
     }
@@ -66,15 +66,14 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function<std::vector
     std::cout << "building super kmer mask..." << std::endl;
     std::vector<bool> non_mono_superkmer (num_super_kmers, false);
     //size_t superkmer_idx = 0;
-    uint64_t one_pc_buckets = num_minimizers/100;
-
+    uint64_t one_pc_buckets = std::ceil(num_minimizers/100.0);
     std::cout<<"iterating through buckets :\n";
     for (uint64_t bucket_id = 0; bucket_id != num_minimizers; ++bucket_id) {
         if(bucket_id%one_pc_buckets==0)std::cout << bucket_id/one_pc_buckets <<"%" << '\r'<< std::flush;
-        auto [begin, end] = m_buckets.locate_bucket(bucket_id);
+	auto [begin, end] = m_buckets.locate_bucket(bucket_id);
         //uint64_t num_super_kmers_in_bucket = end - begin;
         for (uint64_t super_kmer_id = begin; super_kmer_id != end; ++super_kmer_id) {
-            uint64_t offset = m_buckets.offsets.access(super_kmer_id);
+	    uint64_t offset = m_buckets.offsets.access(super_kmer_id);
             auto [_, contig_end] = m_buckets.offset_to_id(offset, m_k);
             (void)_;
             bit_vector_iterator bv_it(m_buckets.strings, 2 * offset);
@@ -105,11 +104,13 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function<std::vector
 		std::string kmer_str(m_k,'_');
                 util::uint_kmer_to_string(kmer, &kmer_str[0], m_k);
 		std::vector<std::string> labels = get_annotation_labels(kmer_str);
+	
 		if(prev_labels.size() == 0){
                     prev_labels = labels;
                 } else if(non_mono_superkmer[super_kmer_id] == false && !equal(labels, prev_labels)){
-                    non_mono_superkmer[super_kmer_id] = true;
+		    non_mono_superkmer[super_kmer_id] = true;
                     prev_labels = labels;
+		    break;
                 }
             }
         }
