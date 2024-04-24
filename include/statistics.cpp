@@ -107,9 +107,8 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function<std::vector
 	
 		if(prev_labels.size() == 0){
                     prev_labels = labels;
-                } else if(non_mono_superkmer[super_kmer_id] == false && !equal(labels, prev_labels)){
+                } else if(!equal(labels, prev_labels)){
 		    non_mono_superkmer[super_kmer_id] = true;
-                    prev_labels = labels;
 		    break;
                 }
             }
