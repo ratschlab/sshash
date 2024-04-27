@@ -78,7 +78,7 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function <bool (std:
 	    auto [begin, end] = m_buckets.locate_bucket(bucket_id);
         //uint64_t num_super_kmers_in_bucket = end - begin;
         for (uint64_t super_kmer_id = begin; super_kmer_id != end; ++super_kmer_id) {
-	        uint64_t offset = m_buckets.offsets.access(super_kmer_id);
+	    uint64_t offset = m_buckets.offsets.access(super_kmer_id);
             auto [_, contig_end] = m_buckets.offset_to_id(offset, m_k);
             (void)_;
             bit_vector_iterator bv_it(m_buckets.strings, 2 * offset);
@@ -109,13 +109,14 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function <bool (std:
                 std::string chars_to_add(num_chars_to_add, '_');
                 if(num_chars_to_add > 1){
                     util::uint_kmer_to_string(kmer, &chars_to_add[0], m_k);
+		    num_chars_to_add = 1;
                 }else{
                     uint_kmer_to_last_char(kmer, &chars_to_add[0], m_k);
-                    num_chars_to_add = 1;
                 }
                 superkmer += chars_to_add;
                 
-            }    
+            }   
+	    //std::cout<<"superkmer "<<super_kmer_id <<": "<< superkmer<<'\n';
             // get labels and compare them to previous ones
             if(!monochromatic_labels(superkmer)){
                 non_mono_superkmer[super_kmer_id] = true;
