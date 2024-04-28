@@ -5,6 +5,7 @@
 #include "buckets.hpp"
 #include "skew_index.hpp"
 #include "weights.hpp"
+#include <mutex>
 
 namespace sshash {
 
