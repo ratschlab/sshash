@@ -1,5 +1,9 @@
+#include <algorithm>
+#include <functional>
+#include <omp.h>
 #include "dictionary.hpp"
 #include "buckets_statistics.hpp"
+#include <time.h> 
 namespace sshash {
 
 void dictionary::compute_statistics() const {
@@ -63,22 +67,28 @@ void uint_kmer_to_last_char(kmer_t x, char* str, uint64_t k){
     str[0] = util::uint64_to_char(x & 3);
 }
 
-std::vector<bool> dictionary::build_superkmer_bv(const std::function <bool (std::string_view)> &monochromatic_labels) const {
+std::vector<uint64_t> dictionary::build_superkmer_bv(const std::function <bool (std::string_view)> &monochromatic_labels) const {
     //uint64_t num_kmers = size();
     uint64_t num_minimizers = m_minimizers.size();
-    uint64_t num_super_kmers = m_buckets.offsets.size();
+    //uint64_t num_super_kmers = m_buckets.offsets.size();
 
     std::cout << "building super kmer mask..." << std::endl;
-    std::vector<bool> non_mono_superkmer (num_super_kmers, false);
+    //std::vector<bool> non_mono_superkmer (num_super_kmers, false);
     //size_t superkmer_idx = 0;
     uint64_t one_pc_buckets = std::ceil(num_minimizers/100.0);
     std::cout<<"iterating through buckets :\n";
     uint64_t num_threads = std::thread::hardware_concurrency();
     if (num_minimizers < num_threads) num_threads = num_minimizers;
-    std::mutex vec_mutex;
+    std::vector<std::vector<uint64_t>> indeces (num_threads);
+    time_t my_time = time(NULL);
+    printf("%s", ctime(&my_time)); 
     #pragma omp parallel for num_threads(num_threads) schedule(dynamic)
     for (uint64_t bucket_id = 0; bucket_id != num_minimizers; ++bucket_id) {
-        if(bucket_id%one_pc_buckets==0)std::cout << bucket_id/one_pc_buckets <<"%" << '\r'<< std::flush;
+        if(bucket_id%one_pc_buckets==0){
+	    my_time = time(NULL);
+	    printf("%s", ctime(&my_time));
+	    std::cout <<" "<< bucket_id/one_pc_buckets <<"%" << std::endl;
+	}
 	    auto [begin, end] = m_buckets.locate_bucket(bucket_id);
         //uint64_t num_super_kmers_in_bucket = end - begin;
         for (uint64_t super_kmer_id = begin; super_kmer_id != end; ++super_kmer_id) {
@@ -114,16 +124,27 @@ std::vector<bool> dictionary::build_superkmer_bv(const std::function <bool (std:
             }   
             // get labels and compare them to previous ones
             if(!monochromatic_labels(superkmer)){
-                vec_mutex.lock();
-		non_mono_superkmer[super_kmer_id] = true;
-		vec_mutex.unlock();
-            }
+            	indeces[omp_get_thread_num()].push_back(super_kmer_id);
+	    }
             
         }
     }
     std::cout << "DONE" << std::endl;
-
-    return non_mono_superkmer;
+    my_time = time(NULL);
+    printf("%s", ctime(&my_time)); 
+    std::cout << " Merging index vectors...\n";
+    std::sort(indeces.begin(),indeces.end(),[](const std::vector<uint64_t>& first, const std::vector<uint64_t>& second) {return first.size() < second.size(); });
+    std::vector<uint64_t> merged = std::move(indeces[0]);
+    for(uint64_t i = 1; i < num_threads; i++){
+    	std::vector<uint64_t> dest_aux;
+	auto& src = indeces[i];
+	std::merge(merged.begin(),merged.end(),src.begin(), src.end(),std::back_inserter(dest_aux));
+	merged = std::move(dest_aux);
+    }
+    my_time = time(NULL);
+    printf("%s", ctime(&my_time)); 
+    std::cout<< " merged! \n";
+    return merged;
 }
 
 }  // namespace sshash
