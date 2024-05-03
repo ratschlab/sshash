@@ -112,6 +112,8 @@ struct dictionary {
     }
     std::pair<lookup_result, uint64_t> kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const ;
     std::pair<uint64_t, uint64_t> kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const ;
+    uint64_t look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str);
+
 
 private:
     uint64_t m_size;

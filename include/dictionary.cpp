@@ -28,6 +28,10 @@ std::pair<lookup_result, uint64_t> dictionary::kmer_to_superkmer_idx_helper(kmer
     return  m_buckets.lookup_superkmer_start(begin, end, uint_kmer, m_k, m_m);
 
 }
+uint64_t dictionary::look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str){
+    kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
+    return m_buckets.lookup_in_super_kmer(superkmer_id, uint_kmer, m_k, m_m).kmer_id;
+}
 lookup_result dictionary::lookup_uint_regular_parsing(kmer_t uint_kmer) const {
     uint64_t minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
     uint64_t bucket_id = m_minimizers.lookup(minimizer);
