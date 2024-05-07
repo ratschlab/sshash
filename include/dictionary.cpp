@@ -28,9 +28,15 @@ std::pair<lookup_result, uint64_t> dictionary::kmer_to_superkmer_idx_helper(kmer
     return  m_buckets.lookup_superkmer_start(begin, end, uint_kmer, m_k, m_m);
 
 }
-uint64_t dictionary::look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str){
+uint64_t dictionary::look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str, bool check_reverse_complement){
     kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
-    return m_buckets.lookup_in_super_kmer(superkmer_id, uint_kmer, m_k, m_m).kmer_id;
+
+    auto res = m_buckets.lookup_in_super_kmer(superkmer_id, uint_kmer, m_k, m_m).kmer_id;
+    if (check_reverse_complement and res == constants::invalid_uint64) {
+        kmer_t uint_kmer_rc = util::compute_reverse_complement(uint_kmer, m_k);
+        res = m_buckets.lookup_in_super_kmer(superkmer_id, uint_kmer_rc, m_k, m_m).kmer_id;
+    }
+    return res;
 }
 lookup_result dictionary::lookup_uint_regular_parsing(kmer_t uint_kmer) const {
     uint64_t minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
@@ -110,13 +116,11 @@ std::pair<uint64_t, uint64_t> dictionary::kmer_to_superkmer_idx(char const* kmer
 
     kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
     auto[res, s_idx] = kmer_to_superkmer_idx_helper(uint_kmer);
-    assert(res.kmer_orientation == constants::forward_orientation);
     if(res.kmer_id == constants::invalid_uint64 && check_reverse_complement){
         kmer_t uint_kmer_rc = util::compute_reverse_complement(uint_kmer, m_k);
         auto pair = kmer_to_superkmer_idx_helper(uint_kmer_rc);
         res = pair.first;
         s_idx = pair.second;
-        res.kmer_orientation = constants::backward_orientation;
     }
     return std::pair(res.kmer_id, s_idx);
 }  
