@@ -96,7 +96,12 @@ struct dictionary {
 
     void superkmer_statistics() const;
 
+    // pre: monochromatic_labels must return true iff same labels are found for all k-mers in given string 
+    // post: returns indeces of superkmers that are not monochromatic
     std::vector<uint64_t> build_superkmer_bv(const std::function<bool (std::string_view)> &monochromatic_labels) const;
+    //pre: get_annotation_labels must return vector of labels for given k-mer
+    //post: number of k-mers and color changes for every super-k-mer are written to files
+    void make_superkmer_stats(const std::function<std::vector<std::string> (std::string_view)> &get_annotation_labels) const;
 
     template <typename Visitor>
     void visit(Visitor& visitor) {
