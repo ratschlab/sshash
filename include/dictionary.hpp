@@ -94,14 +94,16 @@ struct dictionary {
     void print_space_breakdown() const;
     void compute_statistics() const;
 
-    void superkmer_statistics() const;
-
-    // pre: monochromatic_labels must return true iff same labels are found for all k-mers in given string 
+    // pre: monochromatic_labels returns true iff same labels are found for all k-mers in given string 
     // post: returns indeces of superkmers that are not monochromatic
     std::vector<uint64_t> build_superkmer_bv(const std::function<bool (std::string_view)> &monochromatic_labels) const;
-    //pre: get_annotation_labels must return vector of labels for given k-mer
-    //post: number of k-mers and color changes for every super-k-mer are written to files
+    // pre: get_annotation_labels returns vector of labels for given k-mer
+    // post: number of k-mers and color changes for every super-k-mer are written to files
     void make_superkmer_stats(const std::function<std::vector<std::string> (std::string_view)> &get_annotation_labels) const;
+
+    superkmer_result kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const ;
+    superkmer_result kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const ;
+    uint64_t look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str, bool check_reverse_complement) const ;
 
     template <typename Visitor>
     void visit(Visitor& visitor) {
@@ -115,11 +117,6 @@ struct dictionary {
         visitor.visit(m_skew_index);
         visitor.visit(m_weights);
     }
-    superkmer_result kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const ;
-    superkmer_result kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const ;
-    uint64_t look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str, bool check_reverse_complement);
-    
-    
 
 private:
     uint64_t m_size;

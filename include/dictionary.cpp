@@ -2,7 +2,6 @@
 
 namespace sshash {
 
-//////////////////////////////////////////
 superkmer_result dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const {
     uint64_t minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
     uint64_t bucket_id = m_minimizers.lookup(minimizer);
@@ -29,7 +28,7 @@ superkmer_result dictionary::kmer_to_superkmer_idx_helper(kmer_t uint_kmer) cons
     return  m_buckets.lookup_superkmer_start(begin, end, uint_kmer, m_k, m_m);
 
 }
-uint64_t dictionary::look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str, bool check_reverse_complement){
+uint64_t dictionary::look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str, bool check_reverse_complement) const {
     kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
 
     auto res = m_buckets.lookup_in_super_kmer(superkmer_id, uint_kmer, m_k, m_m).kmer_id;
@@ -106,7 +105,7 @@ lookup_result dictionary::lookup_advanced(char const* string_kmer,
     kmer_t uint_kmer = util::string_to_uint_kmer(string_kmer, m_k);
     return lookup_advanced_uint(uint_kmer, check_reverse_complement);
 }
-//////////////////////////////////////////
+
 superkmer_result dictionary::kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const {
     
     kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
