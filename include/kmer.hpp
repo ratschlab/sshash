@@ -104,6 +104,7 @@ struct alpha_kmer_t : uint_kmer_t<Kmer, BitsPerChar> {
     static constexpr char const* alphabet = Alphabet;
     static constexpr uint8_t alphabet_size = std::char_traits<char>::length(Alphabet);
 
+    static bool is_valid(char c);
     static uint64_t char_to_uint(char c);
     static char uint64_to_char(uint64_t x) { return alphabet[x]; }
 };
@@ -148,8 +149,8 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
     }
 
     [[maybe_unused]] dna_uint_kmer_t reverse_complement(uint64_t k) {
-        dna_uint_kmer_t x(*this);
         assert(k <= max_k);
+        dna_uint_kmer_t x(*this);
         dna_uint_kmer_t res(0);
         for (uint16_t i = 0; i < uint_kmer_bits; i += 64) { res.append64(crc64(x.pop64())); }
         // res is full reverse-complement to x
@@ -186,6 +187,66 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
     */
     static uint64_t char_to_uint(char c) { return (c >> 1) & 3; }
 #endif
+
+    /*
+        Forward character map:
+            A -> A    65
+            C -> C    67
+            G -> G    71
+            T -> T    84
+            a -> a    97
+            c -> c    99
+            g -> g   103
+            t -> t   116
+        All other chars map to zero.
+    */
+    static constexpr char canonicalize_basepair_forward_map[256] = {
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 0,  0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 0,  0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   65, 0, 67, 0, 0, 0, 71, 0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 97, 0, 99, 0, 0, 0, 103,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 116, 0,  0, 0,  0, 0, 0, 0,  0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 0,  0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 0,  0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 0,  0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 0,  0, 0,  0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,   0,  0, 0,  0, 0, 0, 0,  0, 0};
+
+    /*
+        Reverse character map:
+        65    A -> T    84
+        67    C -> G    71
+        71    G -> C    67
+        84    T -> A    65
+        97    a -> t   116
+        99    c -> g   103
+    103    g -> c    99
+    116    t -> a    97
+        All other chars map to zero.
+    */
+    static constexpr char canonicalize_basepair_reverse_map[256] = {
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,   0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,   0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  84, 0, 71, 0, 0, 0, 67,  0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 116, 0, 103, 0, 0, 0, 99,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 97, 0,  0, 0,  0, 0, 0, 0,   0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,   0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,   0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,   0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,   0, 0,   0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0,  0,  0, 0,  0, 0, 0, 0,   0, 0};
+
+    [[maybe_unused]] static void compute_reverse_complement(char const* input, char* output,
+                                                            uint64_t size) {
+        for (uint64_t i = 0; i != size; ++i) {
+            int c = input[i];
+            output[size - i - 1] = canonicalize_basepair_reverse_map[c];
+        }
+    }
+
+    static inline bool is_valid(char c) {
+        return canonicalize_basepair_forward_map[static_cast<size_t>(c)];
+    }
 };
 
 inline constexpr char amino_acids[] = "ABCDEFGHIJKLMNOPQRSTUVWYZX";
@@ -199,17 +260,12 @@ struct aa_uint_kmer_t : alpha_kmer_t<Kmer, 5, amino_acids> {
     static constexpr uint64_t max_k = 12;
 
     static constexpr uint8_t char_to_aa[128] = {
-        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
-        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
-        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
-        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
-        25,  0,  1,  2,   3,  4,  5,  6,   7,  8,  9, 10,  11, 12, 13, 14,
-        15, 16, 17, 18,  19, 20, 21, 22,  25, 23, 24, 25,  25, 25, 25, 25,
-        25,  0,  1,  2,   3,  4,  5,  6,   7,  8,  9, 10,  11, 12, 13, 14,
-        15, 16, 17, 18,  19, 20, 21, 22,  25, 23, 24, 25,  25, 25, 25, 25
-    };
-
-    [[maybe_unused]] aa_uint_kmer_t reverse_complement(uint64_t k) { return *this; }
+        25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25,
+        25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25,
+        25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 0,
+        1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+        25, 23, 24, 25, 25, 25, 25, 25, 25, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 25, 23, 24, 25, 25, 25, 25, 25};
 
     static uint64_t char_to_uint(char c) { return char_to_aa[static_cast<size_t>(c)]; }
 };

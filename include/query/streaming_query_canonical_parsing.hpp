@@ -46,7 +46,8 @@ struct streaming_query_canonical_parsing {
 
     lookup_result lookup_advanced(const char* kmer) {
         /* 1. validation */
-        bool is_valid = m_start ? util::is_valid(kmer, m_k) : util::is_valid(kmer[m_k - 1]);
+        bool is_valid =
+            m_start ? util::is_valid<kmer_t>(kmer, m_k) : kmer_t::is_valid(kmer[m_k - 1]);
         if (!is_valid) {
             start();
             return lookup_result();
