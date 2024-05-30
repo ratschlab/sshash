@@ -107,6 +107,13 @@ struct alpha_kmer_t : uint_kmer_t<Kmer, BitsPerChar> {
     static bool is_valid(char c);
     static uint64_t char_to_uint(char c);
     static char uint64_to_char(uint64_t x) { return alphabet[x]; }
+
+    // Revcompl only makes sense for DNA, fallback to self otherwise
+    [[maybe_unused]] alpha_kmer_t reverse_complement(uint64_t k) { return *this; }
+    [[maybe_unused]] static void compute_reverse_complement(char const* input, char* output,
+                                                            uint64_t size) {
+        for (uint64_t i = 0; i != size; ++i) { output[i] = input[i]; }
+    }
 };
 
 #ifdef SSHASH_USE_TRADITIONAL_NUCLEOTIDE_ENCODING
