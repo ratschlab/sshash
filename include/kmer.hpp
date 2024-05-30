@@ -108,8 +108,8 @@ struct alpha_kmer_t : uint_kmer_t<Kmer, BitsPerChar> {
     static uint64_t char_to_uint(char c);
     static char uint64_to_char(uint64_t x) { return alphabet[x]; }
 
-    // Revcompl only makes sense for DNA, fallback to self otherwise
-    [[maybe_unused]] alpha_kmer_t reverse_complement(uint64_t k) { return *this; }
+    // Revcompl only makes sense for DNA, fallback to noop otherwise
+    [[maybe_unused]] virtual void reverse_complement(uint64_t) {}
     [[maybe_unused]] static void compute_reverse_complement(char const* input, char* output,
                                                             uint64_t size) {
         for (uint64_t i = 0; i != size; ++i) { output[i] = input[i]; }
@@ -155,14 +155,13 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
         return res;
     }
 
-    [[maybe_unused]] dna_uint_kmer_t reverse_complement(uint64_t k) {
+    [[maybe_unused]] void reverse_complement(uint64_t k) override {
         assert(k <= max_k);
-        dna_uint_kmer_t x(*this);
-        dna_uint_kmer_t res(0);
-        for (uint16_t i = 0; i < uint_kmer_bits; i += 64) { res.append64(crc64(x.pop64())); }
+        dna_uint_kmer_t rev(0);
+        for (uint16_t i = 0; i < uint_kmer_bits; i += 64) { rev.append64(crc64(base::pop64())); }
         // res is full reverse-complement to x
-        res.drop(uint_kmer_bits - k * bits_per_char);
-        return res;
+        rev.drop(uint_kmer_bits - k * bits_per_char);
+        *this = rev;
     }
 
 #ifdef SSHASH_USE_TRADITIONAL_NUCLEOTIDE_ENCODING

@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
             random_kmer(kmer.data(), kmer_len);
             kmer_t::compute_reverse_complement(kmer.data(), rc.data(), kmer_len);
             kmer_t uint_kmer = util::string_to_uint_kmer<kmer_t>(kmer.data(), kmer_len);
-            uint_kmer = uint_kmer.reverse_complement(kmer_len);
+            uint_kmer.reverse_complement(kmer_len);
             expect(util::uint_kmer_to_string(uint_kmer, kmer_len), rc);
         }
     }
