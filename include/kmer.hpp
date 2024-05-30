@@ -188,6 +188,31 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
 #endif
 };
 
+inline constexpr char amino_acids[] = "ABCDEFGHIJKLMNOPQRSTUVWYZX";
+template <typename Kmer>
+struct aa_uint_kmer_t : alpha_kmer_t<Kmer, 5, amino_acids> {
+    using base = alpha_kmer_t<Kmer, 5, amino_acids>;
+    using base::uint_kmer_bits;
+    using base::bits_per_char;
+    using base::max_k;
+    using base::base;
+
+    static constexpr uint8_t char_to_aa[128] = {
+        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
+        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
+        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
+        25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,  25, 25, 25, 25,
+        25,  0,  1,  2,   3,  4,  5,  6,   7,  8,  9, 10,  11, 12, 13, 14,
+        15, 16, 17, 18,  19, 20, 21, 22,  25, 23, 24, 25,  25, 25, 25, 25,
+        25,  0,  1,  2,   3,  4,  5,  6,   7,  8,  9, 10,  11, 12, 13, 14,
+        15, 16, 17, 18,  19, 20, 21, 22,  25, 23, 24, 25,  25, 25, 25, 25
+    };
+
+    [[maybe_unused]] aa_uint_kmer_t reverse_complement(uint64_t k) { return *this; }
+
+    static uint64_t char_to_uint(char c) { return char_to_aa[static_cast<size_t>(c)]; }
+};
+
 // also supports bitpack<__uint128_t, 1>, std::bitset<256>, etc
 #ifdef SSHASH_USE_MAX_KMER_LENGTH_63
 using default_kmer_t = dna_uint_kmer_t<__uint128_t>;
