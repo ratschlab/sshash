@@ -87,6 +87,7 @@ struct uint_kmer_t {
 
     static constexpr uint16_t uint_kmer_bits = 8 * sizeof(Kmer);
     static constexpr uint8_t bits_per_char = BitsPerChar;
+
     // max *odd* size that can be packed into uint_kmer_bits bits
     static constexpr uint16_t max_k = []() {
         uint16_t max_k_any = uint_kmer_bits / bits_per_char;
@@ -261,8 +262,10 @@ struct aa_uint_kmer_t : alpha_kmer_t<Kmer, 5, amino_acids> {
     using base = alpha_kmer_t<Kmer, 5, amino_acids>;
     using base::uint_kmer_bits;
     using base::bits_per_char;
-    using base::max_k;
     using base::base;
+
+    // max size that can be packed into uint_kmer_bits bits
+    static constexpr uint16_t max_k = uint_kmer_bits / bits_per_char;
 
     static constexpr int8_t char_to_aa[256] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
