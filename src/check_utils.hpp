@@ -51,7 +51,7 @@ bool check_correctness_lookup_access(std::istream& is, dictionary<kmer_t> const&
 
             /* transform 50% of the kmers into their reverse complements */
             if ((num_kmers & 1) == 0) {
-                uint_kmer.reverse_complement(k);
+                uint_kmer.reverse_complement_inplace(k);
                 orientation = constants::backward_orientation;
             }
 
@@ -141,7 +141,7 @@ bool check_correctness_lookup_access(std::istream& is, dictionary<kmer_t> const&
             dict.access(id, got_kmer_str.data());
             kmer_t got_uint_kmer = util::string_to_uint_kmer<kmer_t>(got_kmer_str.data(), k);
             kmer_t got_uint_kmer_rc = got_uint_kmer;
-            got_uint_kmer_rc.reverse_complement(k);
+            got_uint_kmer_rc.reverse_complement_inplace(k);
             if (got_uint_kmer != uint_kmer and got_uint_kmer_rc != uint_kmer) {
                 std::cout << "ERROR: got '" << got_kmer_str << "' but expected '"
                           << expected_kmer_str << "'" << std::endl;

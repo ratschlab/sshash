@@ -170,7 +170,7 @@ void parse_file(std::istream& is, parse_data<kmer_t>& data,
 
             if (build_config.canonical_parsing) {
                 kmer_t uint_kmer_rc = uint_kmer;
-                uint_kmer_rc.reverse_complement(k);
+                uint_kmer_rc.reverse_complement_inplace(k);
                 uint64_t minimizer_rc = util::compute_minimizer<kmer_t>(uint_kmer_rc, k, m, seed);
                 minimizer = std::min(minimizer, minimizer_rc);
             }

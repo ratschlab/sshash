@@ -68,7 +68,7 @@ struct streaming_query_regular_parsing {
         m_curr_minimizer = m_minimizer_enum.next(m_kmer, m_start);
         assert(m_curr_minimizer == util::compute_minimizer<kmer_t>(m_kmer, m_k, m_m, m_seed));
         m_kmer_rc = m_kmer;
-        m_kmer_rc.reverse_complement(m_k);
+        m_kmer_rc.reverse_complement_inplace(m_k);
         constexpr bool reverse = true;
         m_curr_minimizer_rc = m_minimizer_enum_rc.next(m_kmer_rc, m_start, reverse);
         assert(m_curr_minimizer_rc == util::compute_minimizer<kmer_t>(m_kmer_rc, m_k, m_m, m_seed));
