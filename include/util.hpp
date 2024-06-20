@@ -161,7 +161,7 @@ template <class kmer_t>
 */
 template <class kmer_t, typename Hasher = murmurhash2_64>
 uint64_t compute_minimizer(kmer_t kmer, const uint64_t k, const uint64_t m, const uint64_t seed) {
-    assert(m <= constants::max_m);
+    assert(m <= kmer_t::max_m);
     assert(m <= k);
     uint64_t min_hash = uint64_t(-1);
     kmer_t minimizer = kmer_t(-1);
@@ -182,7 +182,7 @@ uint64_t compute_minimizer(kmer_t kmer, const uint64_t k, const uint64_t m, cons
 template <class kmer_t, typename Hasher = murmurhash2_64>
 std::pair<kmer_t, uint64_t> compute_minimizer_pos(kmer_t kmer, uint64_t k, uint64_t m,
                                                   uint64_t seed) {
-    assert(m <= constants::max_m);
+    assert(m <= kmer_t::max_m);
     assert(m <= k);
     uint64_t min_hash = uint64_t(-1);
     kmer_t minimizer = kmer_t(-1);

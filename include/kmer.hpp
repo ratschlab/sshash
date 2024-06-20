@@ -88,14 +88,11 @@ struct uint_kmer_t {
     static constexpr uint16_t uint_kmer_bits = 8 * sizeof(Kmer);
     static constexpr uint8_t bits_per_char = BitsPerChar;
 
-    // max *odd* size that can be packed into uint_kmer_bits bits
-    static constexpr uint16_t max_k = []() {
-        uint16_t max_k_any = uint_kmer_bits / bits_per_char;
-        return max_k_any % 2 == 0 ? max_k_any - 1 : max_k_any;
-    }();
-
     static_assert(uint_kmer_bits % 64 == 0, "Kmer must use 64*k bits");
-    static_assert(bits_per_char < 64, "Less than 64 bits per character");
+    static_assert(bits_per_char < 64, "BitsPerChar must be less than 64");
+
+    static constexpr uint16_t max_k = uint_kmer_bits / bits_per_char;
+    static constexpr uint16_t max_m = 64 / bits_per_char;
 };
 
 template <typename Kmer, uint8_t BitsPerChar, char const* Alphabet>
@@ -128,8 +125,10 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
     using base = alpha_kmer_t<Kmer, 2, nucleotides>;
     using base::uint_kmer_bits;
     using base::bits_per_char;
-    using base::max_k;
     using base::base;
+    // Use odd lengths for DNA to avoid dealing with self-complements
+    static constexpr uint16_t max_k = base::max_k - !(base::max_k % 2);
+    static constexpr uint16_t max_m = base::max_m - !(base::max_m % 2);
     /*
         This works with the map:
         A -> 00; C -> 01; G -> 11; T -> 10.
@@ -263,9 +262,6 @@ struct aa_uint_kmer_t : alpha_kmer_t<Kmer, 5, amino_acids> {
     using base::uint_kmer_bits;
     using base::bits_per_char;
     using base::base;
-
-    // max size that can be packed into uint_kmer_bits bits
-    static constexpr uint16_t max_k = uint_kmer_bits / bits_per_char;
 
     static constexpr int8_t char_to_aa[256] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
