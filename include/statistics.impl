@@ -15,7 +15,6 @@ void dictionary<kmer_t>::compute_statistics() const {
     buckets_statistics buckets_stats(num_minimizers, num_kmers, num_super_kmers);
 
     std::cout << "computing buckets statistics..." << std::endl;
-    #pragma omp parallel for num_threads(num_threads) schedule(dynamic)
     for (uint64_t bucket_id = 0; bucket_id < num_minimizers; ++bucket_id) {
         auto [begin, end] = m_buckets.locate_bucket(bucket_id);
         uint64_t num_super_kmers_in_bucket = end - begin;
