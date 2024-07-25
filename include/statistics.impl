@@ -64,12 +64,14 @@ inline bool equal(const std::vector<std::string>& input1, const std::vector<std:
     return true; 
 }
 
-void uint_kmer_to_last_char(kmer_t x, char* str, uint64_t k){
-    x >>= 2*(k-1);
-    str[0] = util::uint64_to_char(x & 3);
+template <class kmer_t>
+void uint_kmer_to_last_char(kmer_t x, char* str, uint64_t k) {
+    x.drop_chars(k - 1);
+    str[0] = kmer_t::uint64_to_char(x.pop_char(1));
 }
 
-std::vector<uint64_t> dictionary::build_superkmer_bv(const std::function <bool (std::string_view)> &monochromatic_labels) const {
+template <class kmer_t>
+std::vector<uint64_t> dictionary<kmer_t>::build_superkmer_bv(const std::function <bool (std::string_view)> &monochromatic_labels) const {
     //uint64_t num_kmers = size();
     uint64_t num_minimizers = m_minimizers.size();
     //uint64_t num_super_kmers = m_buckets.offsets.size();
@@ -158,7 +160,8 @@ void write_vec(const std::vector<unsigned int>& vec, std::string output_path){
     }
     outputFile.close();
 }
-void dictionary::make_superkmer_stats(const std::function<std::vector<std::string> (std::string_view)> &get_annotation_labels) const {
+template <class kmer_t>
+void dictionary<kmer_t>::make_superkmer_stats(const std::function<std::vector<std::string> (std::string_view)> &get_annotation_labels) const {
     uint64_t num_minimizers = m_minimizers.size();
     uint64_t num_super_kmers = m_buckets.offsets.size();
 

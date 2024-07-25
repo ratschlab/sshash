@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "util.hpp"
 #include "minimizers.hpp"
 #include "buckets.hpp"

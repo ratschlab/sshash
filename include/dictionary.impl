@@ -30,11 +30,12 @@ superkmer_result dictionary<kmer_t>::kmer_to_superkmer_idx_helper(kmer_t uint_km
 
 template <class kmer_t>
 uint64_t dictionary<kmer_t>::look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str, bool check_reverse_complement) const {
-    kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
+    kmer_t uint_kmer = util::string_to_uint_kmer<kmer_t>(kmer_str, m_k);
 
     auto res = m_buckets.lookup_in_super_kmer(superkmer_id, uint_kmer, m_k, m_m).kmer_id;
     if (check_reverse_complement and res == constants::invalid_uint64) {
-        kmer_t uint_kmer_rc = util::compute_reverse_complement(uint_kmer, m_k);
+        kmer_t uint_kmer_rc = uint_kmer;
+        uint_kmer_rc.reverse_complement_inplace(m_k);
         res = m_buckets.lookup_in_super_kmer(superkmer_id, uint_kmer_rc, m_k, m_m).kmer_id;
     }
     return res;
@@ -110,10 +111,11 @@ uint64_t dictionary<kmer_t>::lookup_uint(kmer_t uint_kmer, bool check_reverse_co
 
 template <class kmer_t>
 superkmer_result dictionary<kmer_t>::kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const {
-    kmer_t uint_kmer = util::string_to_uint_kmer(kmer_str, m_k);
+    kmer_t uint_kmer = util::string_to_uint_kmer<kmer_t>(kmer_str, m_k);
     superkmer_result sk_res = kmer_to_superkmer_idx_helper(uint_kmer);
     if(sk_res.kmer_idx == constants::invalid_uint64 && check_reverse_complement){
-        kmer_t uint_kmer_rc = util::compute_reverse_complement(uint_kmer, m_k);
+        kmer_t uint_kmer_rc = uint_kmer;
+        uint_kmer_rc.reverse_complement_inplace(m_k);
         sk_res = kmer_to_superkmer_idx_helper(uint_kmer_rc);
     }
     return sk_res;
