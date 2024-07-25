@@ -15,8 +15,8 @@ void dictionary<kmer_t>::compute_statistics() const {
     buckets_statistics buckets_stats(num_minimizers, num_kmers, num_super_kmers);
 
     std::cout << "computing buckets statistics..." << std::endl;
-
-    for (uint64_t bucket_id = 0; bucket_id != num_minimizers; ++bucket_id) {
+    #pragma omp parallel for num_threads(num_threads) schedule(dynamic)
+    for (uint64_t bucket_id = 0; bucket_id < num_minimizers; ++bucket_id) {
         auto [begin, end] = m_buckets.locate_bucket(bucket_id);
         uint64_t num_super_kmers_in_bucket = end - begin;
         buckets_stats.add_num_super_kmers_in_bucket(num_super_kmers_in_bucket);
@@ -87,7 +87,7 @@ std::vector<uint64_t> dictionary<kmer_t>::build_superkmer_bv(const std::function
     time_t my_time = time(NULL);
     printf("%s", ctime(&my_time)); 
     #pragma omp parallel for num_threads(num_threads) schedule(dynamic)
-    for (uint64_t bucket_id = 0; bucket_id != num_minimizers; ++bucket_id) {
+    for (uint64_t bucket_id = 0; bucket_id < num_minimizers; ++bucket_id) {
         if(bucket_id%one_pc_buckets==0){
 	    my_time = time(NULL);
 	    printf("%s", ctime(&my_time));
@@ -178,7 +178,7 @@ void dictionary<kmer_t>::make_superkmer_stats(const std::function<std::vector<st
     time_t my_time = time(NULL);
     std::cout<<"iterating through buckets :\n";
     #pragma omp parallel for num_threads(num_threads) schedule(dynamic)
-    for (uint64_t bucket_id = 0; bucket_id != num_minimizers; ++bucket_id) {
+    for (uint64_t bucket_id = 0; bucket_id < num_minimizers; ++bucket_id) {
         if(bucket_id%one_pc_buckets==0){
             my_time = time(NULL);
             printf("%s", ctime(&my_time));
