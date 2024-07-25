@@ -10,11 +10,6 @@ namespace sshash {
               << (time * 1000) / num_kmers << " [ns/kmer])" << std::endl;
 }
 
-struct empty_bucket_runtime_error : public std::runtime_error {
-    empty_bucket_runtime_error()
-        : std::runtime_error("try a different choice of l or change seed") {}
-};
-
 struct parse_runtime_error : public std::runtime_error {
     parse_runtime_error() : std::runtime_error("did you provide an input file with weights?") {}
 };
@@ -26,6 +21,7 @@ struct parse_runtime_error : public std::runtime_error {
     }
 }
 
+template <class kmer_t>
 struct compact_string_pool {
     compact_string_pool() {}
 
@@ -43,28 +39,25 @@ struct compact_string_pool {
             uint64_t prefix = 0;
             if (glue) {
                 prefix = k - 1;
-            } else {
-                /* otherwise, start a new piece */
-                check_contig_size();
-                pieces.push_back(bvb_strings.size() / 2);
+            } else { /* otherwise, start a new piece */
+                pieces.push_back(bvb_strings.size() / kmer_t::bits_per_char);
             }
             for (uint64_t i = prefix; i != size; ++i) {
-                bvb_strings.append_bits(util::char_to_uint(string[i]), 2);
+                bvb_strings.append_bits(kmer_t::char_to_uint(string[i]), kmer_t::bits_per_char);
             }
             num_super_kmers += 1;
-            offset = bvb_strings.size() / 2;
+            offset = bvb_strings.size() / kmer_t::bits_per_char;
         }
 
         void finalize() {
             /* So pieces will be of size p+1, where p is the number of DNA sequences
                in the input file. */
-            check_contig_size();
-            pieces.push_back(bvb_strings.size() / 2);
+            pieces.push_back(bvb_strings.size() / kmer_t::bits_per_char);
             assert(pieces.front() == 0);
 
             /* Push a final sentinel (dummy) kmer to avoid bounds' checking in
                bit_vector_iterator::fill_buf(). */
-            bvb_strings.append_bits(0, 2 * k);
+            bvb_strings.append_bits(0, k * kmer_t::bits_per_char);
         }
 
         uint64_t k;
@@ -72,22 +65,6 @@ struct compact_string_pool {
         uint64_t num_super_kmers;
         std::vector<uint64_t> pieces;
         pthash::bit_vector_builder bvb_strings;
-
-    private:
-        void check_contig_size() const {
-            /* Support a max of 2^32-1 contigs, or "pieces", whose
-               max length must also be < 2^32. */
-            if (!pieces.empty()) {
-                uint64_t contig_length = bvb_strings.size() / 2 - pieces.back();
-                if (contig_length >= 1ULL << 32) {
-                    throw std::runtime_error("contig_length " + std::to_string(contig_length) +
-                                             " does not fit into 32 bits");
-                }
-                if (pieces.size() == 1ULL << 32) {
-                    throw std::runtime_error("num_contigs must be less than 2^32");
-                }
-            }
-        }
     };
 
     uint64_t num_bits() const { return strings.size(); }
