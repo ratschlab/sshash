@@ -1,10 +1,13 @@
 #pragma once
 
+#include <functional>
+
 #include "util.hpp"
 #include "minimizers.hpp"
 #include "buckets.hpp"
 #include "skew_index.hpp"
 #include "weights.hpp"
+#include <mutex>
 
 namespace sshash {
 
@@ -30,6 +33,7 @@ struct dictionary {
     uint64_t k() const { return m_k; }
     uint64_t m() const { return m_m; }
     uint64_t num_contigs() const { return m_buckets.pieces.size() - 1; }
+    uint64_t num_superkmers() const { return m_buckets.offsets.size(); }
     bool canonicalized() const { return m_canonical_parsing; }
     bool weighted() const { return !m_weights.empty(); }
 
@@ -126,6 +130,17 @@ struct dictionary {
     void print_info() const;
     void print_space_breakdown() const;
     void compute_statistics() const;
+
+    // pre: monochromatic_labels returns true iff same labels are found for all k-mers in given string 
+    // post: returns indeces of superkmers that are not monochromatic
+    std::vector<uint64_t> build_superkmer_bv(const std::function<bool (std::string_view)> &monochromatic_labels) const;
+    // pre: get_annotation_labels returns vector of labels for given k-mer
+    // post: number of k-mers and color changes for every super-k-mer are written to files
+    void make_superkmer_stats(const std::function<std::vector<std::string> (std::string_view)> &get_annotation_labels) const;
+
+    superkmer_result kmer_to_superkmer_idx(char const* kmer_str, bool check_reverse_complement) const ;
+    superkmer_result kmer_to_superkmer_idx_helper(kmer_t uint_kmer) const ;
+    uint64_t look_up_from_superkmer_id(uint64_t superkmer_id, char const* kmer_str, bool check_reverse_complement) const ;
 
     template <typename Visitor>
     void visit(Visitor& visitor) const {
