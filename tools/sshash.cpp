@@ -1,8 +1,17 @@
 #include <iostream>
 
 #include "common.hpp"
-#include "bench_utils.hpp"
-#include "check_utils.hpp"
+#include "perf.hpp"
+
+#include "test/check.hpp"
+#include "test/check_from_file.hpp"
+
+#include "src/build.cpp"
+#include "src/dictionary.cpp"
+#include "src/dump.cpp"
+#include "src/info.cpp"
+#include "src/statistics.cpp"
+
 #include "build.cpp"
 #include "query.cpp"
 #include "permute.cpp"
@@ -21,6 +30,8 @@ int check(int argc, char** argv) {
     load_dictionary(dict, index_filename, verbose);
     check_dictionary(dict);
     check_correctness_navigational_contig_query(dict);
+    check_correctness_kmer_iterator(dict);
+    check_correctness_contig_iterator(dict);
     return 0;
 }
 

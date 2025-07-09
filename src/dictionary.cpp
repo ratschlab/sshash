@@ -1,15 +1,17 @@
+#include "include/dictionary.hpp"
+
 namespace sshash {
 
 template <class kmer_t>
-lookup_result dictionary<kmer_t>::lookup_uint_regular_parsing(kmer_t uint_kmer) const {
-    auto minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
-    uint64_t bucket_id = m_minimizers.lookup(uint64_t(minimizer));
+lookup_result dictionary<kmer_t>::lookup_uint_regular(kmer_t uint_kmer) const {
+    uint64_t minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
+    uint64_t bucket_id = m_minimizers.lookup(minimizer);
 
     if (m_skew_index.empty()) return m_buckets.lookup(bucket_id, uint_kmer, m_k, m_m);
 
     auto [begin, end] = m_buckets.locate_bucket(bucket_id);
-    uint64_t num_super_kmers_in_bucket = end - begin;
-    uint64_t log2_bucket_size = util::ceil_log2_uint32(num_super_kmers_in_bucket);
+    const uint64_t num_super_kmers_in_bucket = end - begin;
+    const uint64_t log2_bucket_size = bits::util::ceil_log2_uint32(num_super_kmers_in_bucket);
     if (log2_bucket_size > m_skew_index.min_log2) {
         uint64_t pos = m_skew_index.lookup(uint_kmer, log2_bucket_size);
         /* It must hold pos < num_super_kmers_in_bucket for the kmer to exist. */
@@ -23,37 +25,35 @@ lookup_result dictionary<kmer_t>::lookup_uint_regular_parsing(kmer_t uint_kmer) 
 }
 
 template <class kmer_t>
-lookup_result dictionary<kmer_t>::lookup_uint_canonical_parsing(kmer_t uint_kmer) const {
+lookup_result dictionary<kmer_t>::lookup_uint_canonical(kmer_t uint_kmer,
+                                                        bool check_minimizer) const {
     kmer_t uint_kmer_rc = uint_kmer;
     uint_kmer_rc.reverse_complement_inplace(m_k);
-    auto minimizer = util::compute_minimizer(uint_kmer, m_k, m_m, m_seed);
-    auto minimizer_rc = util::compute_minimizer(uint_kmer_rc, m_k, m_m, m_seed);
-    uint64_t bucket_id = m_minimizers.lookup(uint64_t(std::min(minimizer, minimizer_rc)));
+    uint64_t minimizer = std::min(util::compute_minimizer(uint_kmer, m_k, m_m, m_seed),
+                                  util::compute_minimizer(uint_kmer_rc, m_k, m_m, m_seed));
+    uint64_t bucket_id = m_minimizers.lookup(minimizer);
 
     if (m_skew_index.empty()) {
-        return m_buckets.lookup_canonical(bucket_id, uint_kmer, uint_kmer_rc, m_k, m_m);
+        return m_buckets.lookup_canonical(bucket_id, uint_kmer, uint_kmer_rc, minimizer,  //
+                                          m_k, m_m, m_seed, check_minimizer);
     }
 
     auto [begin, end] = m_buckets.locate_bucket(bucket_id);
-    uint64_t num_super_kmers_in_bucket = end - begin;
-    uint64_t log2_bucket_size = util::ceil_log2_uint32(num_super_kmers_in_bucket);
+    const uint64_t num_super_kmers_in_bucket = end - begin;
+    const uint64_t log2_bucket_size = bits::util::ceil_log2_uint32(num_super_kmers_in_bucket);
     if (log2_bucket_size > m_skew_index.min_log2) {
-        uint64_t pos = m_skew_index.lookup(uint_kmer, log2_bucket_size);
+        auto uint_kmer_canon = std::min(uint_kmer, uint_kmer_rc);
+        uint64_t pos = m_skew_index.lookup(uint_kmer_canon, log2_bucket_size);
         if (pos < num_super_kmers_in_bucket) {
-            auto res = m_buckets.lookup_in_super_kmer(begin + pos, uint_kmer, m_k, m_m);
-            assert(res.kmer_orientation == constants::forward_orientation);
+            auto res = m_buckets.lookup_canonical_in_super_kmer(begin + pos, uint_kmer,
+                                                                uint_kmer_rc, m_k, m_m);
             if (res.kmer_id != constants::invalid_uint64) return res;
-        }
-        uint64_t pos_rc = m_skew_index.lookup(uint_kmer_rc, log2_bucket_size);
-        if (pos_rc < num_super_kmers_in_bucket) {
-            auto res = m_buckets.lookup_in_super_kmer(begin + pos_rc, uint_kmer_rc, m_k, m_m);
-            res.kmer_orientation = constants::backward_orientation;
-            return res;
         }
         return lookup_result();
     }
 
-    return m_buckets.lookup_canonical(begin, end, uint_kmer, uint_kmer_rc, m_k, m_m);
+    return m_buckets.lookup_canonical(begin, end, uint_kmer, uint_kmer_rc, minimizer,  //
+                                      m_k, m_m, m_seed, check_minimizer);
 }
 
 template <class kmer_t>
@@ -76,13 +76,13 @@ lookup_result dictionary<kmer_t>::lookup_advanced(char const* string_kmer,
 template <class kmer_t>
 lookup_result dictionary<kmer_t>::lookup_advanced_uint(kmer_t uint_kmer,
                                                        bool check_reverse_complement) const {
-    if (m_canonical_parsing) return lookup_uint_canonical_parsing(uint_kmer);
-    auto res = lookup_uint_regular_parsing(uint_kmer);
+    if (m_canonical) return lookup_uint_canonical(uint_kmer);
+    auto res = lookup_uint_regular(uint_kmer);
     assert(res.kmer_orientation == constants::forward_orientation);
     if (check_reverse_complement and res.kmer_id == constants::invalid_uint64) {
         kmer_t uint_kmer_rc = uint_kmer;
         uint_kmer_rc.reverse_complement_inplace(m_k);
-        res = lookup_uint_regular_parsing(uint_kmer_rc);
+        res = lookup_uint_regular(uint_kmer_rc);
         res.kmer_orientation = constants::backward_orientation;
     }
     return res;
@@ -123,7 +123,7 @@ void dictionary<kmer_t>::forward_neighbours(kmer_t suffix, neighbourhood<kmer_t>
                                             bool check_reverse_complement) const {
     for (size_t i = 0; i < kmer_t::alphabet_size; i++) {
         kmer_t new_kmer = suffix;
-        new_kmer.kth_char_or(m_k - 1, kmer_t::char_to_uint(kmer_t::alphabet[i]));
+        new_kmer.set(m_k - 1, kmer_t::char_to_uint(kmer_t::alphabet[i]));
         res.forward[i] = lookup_advanced_uint(new_kmer, check_reverse_complement);
     }
 }
@@ -132,7 +132,7 @@ void dictionary<kmer_t>::backward_neighbours(kmer_t prefix, neighbourhood<kmer_t
                                              bool check_reverse_complement) const {
     for (size_t i = 0; i < kmer_t::alphabet_size; i++) {
         kmer_t new_kmer = prefix;
-        new_kmer.kth_char_or(0, kmer_t::char_to_uint(kmer_t::alphabet[i]));
+        new_kmer.set(0, kmer_t::char_to_uint(kmer_t::alphabet[i]));
         res.backward[i] = lookup_advanced_uint(new_kmer, check_reverse_complement);
     }
 }
@@ -172,6 +172,7 @@ kmer_t dictionary<kmer_t>::get_prefix(kmer_t kmer) const {
     prefix.take_chars(m_k);
     return prefix;
 }
+
 template <class kmer_t>
 neighbourhood<kmer_t> dictionary<kmer_t>::kmer_backward_neighbours(
     kmer_t uint_kmer, bool check_reverse_complement) const {
@@ -186,6 +187,7 @@ neighbourhood<kmer_t> dictionary<kmer_t>::kmer_neighbours(char const* string_kme
     kmer_t uint_kmer = util::string_to_uint_kmer<kmer_t>(string_kmer, m_k);
     return kmer_neighbours(uint_kmer, check_reverse_complement);
 }
+
 template <class kmer_t>
 neighbourhood<kmer_t> dictionary<kmer_t>::kmer_neighbours(kmer_t uint_kmer,
                                                           bool check_reverse_complement) const {
@@ -210,8 +212,8 @@ neighbourhood<kmer_t> dictionary<kmer_t>::contig_neighbours(uint64_t contig_id,
 
 template <class kmer_t>
 uint64_t dictionary<kmer_t>::num_bits() const {
-    return 8 * (sizeof(m_size) + sizeof(m_seed) + sizeof(m_k) + sizeof(m_m) +
-                sizeof(m_canonical_parsing)) +
+    return 8 * (sizeof(m_vnum) + sizeof(m_size) + sizeof(m_seed) + sizeof(m_k) + sizeof(m_m) +
+                sizeof(m_canonical)) +
            m_minimizers.num_bits() + m_buckets.num_bits() + m_skew_index.num_bits() +
            m_weights.num_bits();
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "file_merging_iterator.hpp"
+#include "parallel_sort.hpp"
 
 namespace sshash {
 
@@ -26,12 +27,15 @@ struct compact_string_pool {
     compact_string_pool() {}
 
     struct builder {
-        builder(uint64_t k) : k(k), offset(0), num_super_kmers(0) {}
+        builder(uint64_t k) : k(k), offset(0), num_super_kmers(0) {
+            const uint64_t num_bits = 8 * 8 * essentials::GB;  // 8 GB of memory
+            bvb_strings.reserve(num_bits);
+        }
 
         void build(compact_string_pool& pool) {
             pool.m_num_super_kmers = num_super_kmers;
             pool.pieces.swap(pieces);
-            pool.strings.build(&bvb_strings);
+            bvb_strings.build(pool.strings);
         }
 
         void append(char const* string, uint64_t size, bool glue) {
@@ -40,38 +44,39 @@ struct compact_string_pool {
             if (glue) {
                 prefix = k - 1;
             } else { /* otherwise, start a new piece */
-                pieces.push_back(bvb_strings.size() / kmer_t::bits_per_char);
+                assert(bvb_strings.num_bits() % kmer_t::bits_per_char == 0);
+                pieces.push_back(bvb_strings.num_bits() / kmer_t::bits_per_char);
             }
             for (uint64_t i = prefix; i != size; ++i) {
                 bvb_strings.append_bits(kmer_t::char_to_uint(string[i]), kmer_t::bits_per_char);
             }
             num_super_kmers += 1;
-            offset = bvb_strings.size() / kmer_t::bits_per_char;
+            offset = bvb_strings.num_bits() / kmer_t::bits_per_char;
         }
 
         void finalize() {
             /* So pieces will be of size p+1, where p is the number of DNA sequences
                in the input file. */
-            pieces.push_back(bvb_strings.size() / kmer_t::bits_per_char);
+            pieces.push_back(bvb_strings.num_bits() / kmer_t::bits_per_char);
             assert(pieces.front() == 0);
 
-            /* Push a final sentinel (dummy) kmer to avoid bounds' checking in
-               bit_vector_iterator::fill_buf(). */
-            bvb_strings.append_bits(0, k * kmer_t::bits_per_char);
+            /* Push a final sentinel (dummy) value to avoid bounds' checking in
+               kmer_iterator::fill_buff(). */
+            bvb_strings.append_bits(0, kmer_t::uint_kmer_bits);
         }
 
         uint64_t k;
         uint64_t offset;
         uint64_t num_super_kmers;
         std::vector<uint64_t> pieces;
-        pthash::bit_vector_builder bvb_strings;
+        bits::bit_vector::builder bvb_strings;
     };
 
-    uint64_t num_bits() const { return strings.size(); }
+    uint64_t num_bits() const { return strings.num_bits(); }
     uint64_t num_super_kmers() const { return m_num_super_kmers; }
 
     std::vector<uint64_t> pieces;
-    pthash::bit_vector strings;
+    bits::bit_vector strings;
 
 private:
     uint64_t m_num_super_kmers;
@@ -81,6 +86,7 @@ typedef uint8_t num_kmers_in_super_kmer_uint_type;
 
 #pragma pack(push, 1)
 struct minimizer_tuple {
+    minimizer_tuple() {}
     minimizer_tuple(uint64_t minimizer, uint64_t offset, uint64_t num_kmers_in_super_kmer)
         : minimizer(minimizer), offset(offset), num_kmers_in_super_kmer(num_kmers_in_super_kmer) {}
     uint64_t minimizer;
@@ -175,17 +181,21 @@ private:
 };
 
 struct minimizers_tuples {
-    static constexpr uint64_t ram_limit = 0.5 * essentials::GB;
-
-    minimizers_tuples(std::string const& tmp_dirname)
-        : m_buffer_size(0)
-        , m_num_files_to_merge(0)
+    minimizers_tuples() {}
+    minimizers_tuples(build_configuration const& build_config)
+        /* allocate half memory because __gnu::parallel_sort is not in-place */
+        : m_buffer_size((build_config.ram_limit_in_GiB * essentials::GiB) /
+                        (2 * sizeof(minimizer_tuple)))
         , m_num_minimizers(0)
         , m_run_identifier(pthash::clock_type::now().time_since_epoch().count())
-        , m_tmp_dirname(tmp_dirname) {
-        m_buffer_size = ram_limit / sizeof(minimizer_tuple);
-        std::cout << "m_buffer_size " << m_buffer_size << std::endl;
+        , m_num_threads(build_config.num_threads)
+        , m_tmp_dirname(build_config.tmp_dirname)  //
+    {
+        init();
+        m_buffer.reserve(m_buffer_size);
     }
+
+    void init() { m_num_files_to_merge = 0; }
 
     void emplace_back(uint64_t minimizer, uint64_t offset, uint64_t num_kmers_in_super_kmer) {
         if (m_buffer.size() == m_buffer_size) sort_and_flush();
@@ -195,13 +205,13 @@ struct minimizers_tuples {
     minimizer_tuple& back() { return m_buffer.back(); }
 
     void sort_and_flush() {
-        std::cout << "sorting buffer..." << std::endl;
-        std::sort(m_buffer.begin(), m_buffer.end(),
-                  [](minimizer_tuple const& x, minimizer_tuple const& y) {
-                      return (x.minimizer < y.minimizer) or
-                             (x.minimizer == y.minimizer and x.offset < y.offset);
-                  });
-
+        // std::cout << "sorting buffer..." << std::endl;
+        m_temp_buffer.resize(m_buffer.size());
+        parallel_sort(m_buffer, m_temp_buffer, m_num_threads,
+                      [](minimizer_tuple const& x, minimizer_tuple const& y) {
+                          return (x.minimizer < y.minimizer) or
+                                 (x.minimizer == y.minimizer and x.offset < y.offset);
+                      });
         auto tmp_output_filename = get_tmp_output_filename(m_num_files_to_merge);
         std::cout << "saving to file '" << tmp_output_filename << "'..." << std::endl;
         std::ofstream out(tmp_output_filename.c_str(), std::ofstream::binary);
@@ -209,7 +219,7 @@ struct minimizers_tuples {
         out.write(reinterpret_cast<char const*>(m_buffer.data()),
                   m_buffer.size() * sizeof(minimizer_tuple));
         out.close();
-
+        // std::cout << "DONE" << std::endl;
         m_buffer.clear();
         ++m_num_files_to_merge;
     }
@@ -240,9 +250,14 @@ struct minimizers_tuples {
     files_name_iterator files_name_iterator_begin() { return files_name_iterator(this); }
 
     void merge() {
+        assert(m_buffer.empty());
+        std::vector<minimizer_tuple>().swap(m_buffer);
+        std::vector<minimizer_tuple>().swap(m_temp_buffer);
+
         if (m_num_files_to_merge == 0) return;
 
         if (m_num_files_to_merge == 1) {
+            if (m_num_minimizers != 0) return;
             /* just count num. distinct minimizers and do not write twice on disk */
             mm::file_source<minimizer_tuple> input(get_minimizers_filename(),
                                                    mm::advice::sequential);
@@ -264,15 +279,16 @@ struct minimizers_tuples {
         std::ofstream out(get_minimizers_filename().c_str());
         if (!out.is_open()) throw std::runtime_error("cannot open file");
 
+        m_num_minimizers = 0;
         uint64_t num_written_tuples = 0;
         uint64_t prev_minimizer = constants::invalid_uint64;
         while (fm_iterator.has_next()) {
             auto file_it = *fm_iterator;
-            minimizer_tuple tuple = *file_it;
-            out.write(reinterpret_cast<char const*>(&tuple), sizeof(minimizer_tuple));
+            minimizer_tuple mt = *file_it;
+            out.write(reinterpret_cast<char const*>(&mt), sizeof(minimizer_tuple));
             num_written_tuples += 1;
-            if (tuple.minimizer != prev_minimizer) {
-                prev_minimizer = tuple.minimizer;
+            if (mt.minimizer != prev_minimizer) {
+                prev_minimizer = mt.minimizer;
                 ++m_num_minimizers;
             }
             if (num_written_tuples % 50000000 == 0) {
@@ -290,11 +306,13 @@ struct minimizers_tuples {
             auto tmp_output_filename = get_tmp_output_filename(i);
             std::remove(tmp_output_filename.c_str());
         }
-
-        std::vector<minimizer_tuple>().swap(m_buffer);
     }
 
     uint64_t num_minimizers() const { return m_num_minimizers; }
+    uint64_t num_files_to_merge() const { return m_num_files_to_merge; }
+    uint64_t buffer_size() const { return m_buffer_size; }
+    std::vector<minimizer_tuple>& buffer() { return m_buffer; }
+
     void remove_tmp_file() { std::remove(get_minimizers_filename().c_str()); }
 
 private:
@@ -302,8 +320,10 @@ private:
     uint64_t m_num_files_to_merge;
     uint64_t m_num_minimizers;
     uint64_t m_run_identifier;
+    uint64_t m_num_threads;
     std::string m_tmp_dirname;
     std::vector<minimizer_tuple> m_buffer;
+    std::vector<minimizer_tuple> m_temp_buffer;
 
     std::string get_tmp_output_filename(uint64_t id) const {
         std::stringstream filename;
