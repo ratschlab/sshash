@@ -118,14 +118,13 @@ void build_skew_index(skew_index<kmer_t>& m_skew_index, parse_data<kmer_t>& data
     {
         std::cout << "building partitions..." << std::endl;
 
-        pthash::build_configuration mphf_config;
-        mphf_config.c = build_config.c;
-        mphf_config.alpha = 0.94;
-        mphf_config.seed = util::get_seed_for_hash_function(build_config);
-        mphf_config.minimal_output = true;
-        mphf_config.verbose_output = false;
-        mphf_config.num_threads = std::thread::hardware_concurrency();
-        mphf_config.num_partitions = 4 * mphf_config.num_threads;
+        pthash::build_configuration mphf_build_config;
+        mphf_build_config.lambda = build_config.lambda;
+        mphf_build_config.alpha = 0.94;
+        mphf_build_config.seed = util::get_seed_for_hash_function(build_config);
+        mphf_build_config.verbose = false;
+        mphf_build_config.num_threads = build_config.num_threads;
+        mphf_build_config.avg_partition_size = constants::avg_partition_size;
 
         uint64_t partition_id = 0;
         uint64_t lower = min_size;
@@ -137,7 +136,7 @@ void build_skew_index(skew_index<kmer_t>& m_skew_index, parse_data<kmer_t>& data
         std::vector<uint32_t> super_kmer_ids_in_partition;
         keys_in_partition.reserve(num_kmers_in_partition[partition_id]);
         super_kmer_ids_in_partition.reserve(num_kmers_in_partition[partition_id]);
-        pthash::compact_vector::builder cvb_positions;
+        bits::compact_vector::builder cvb_positions;
         cvb_positions.resize(num_kmers_in_partition[partition_id], num_bits_per_pos);
         /*******/
 
@@ -151,25 +150,21 @@ void build_skew_index(skew_index<kmer_t>& m_skew_index, parse_data<kmer_t>& data
 
                 if (num_kmers_in_partition[partition_id] > 0)  //
                 {
-                    if (keys_in_partition.size() / mphf_config.num_partitions <
-                        pthash::constants::min_partition_size) {
-                        mphf_config.num_partitions =
-                            std::max<uint64_t>(1, keys_in_partition.size() /
-                                                      (2 * pthash::constants::min_partition_size));
-                    }
-
                     if (build_config.verbose) {
-                        std::cout << "    building MPHF with " << mphf_config.num_threads
-                                  << " threads and " << mphf_config.num_partitions
-                                  << " partitions..." << std::endl;
+                        const uint64_t avg_partition_size = pthash::compute_avg_partition_size(
+                            keys_in_partition.size(), mphf_build_config);
+                        const uint64_t num_partitions = pthash::compute_num_partitions(
+                            keys_in_partition.size(), avg_partition_size);
+                        assert(num_partitions > 0);
+                        std::cout << "    building MPHF with " << mphf_build_config.num_threads
+                                  << " threads and " << num_partitions
+                                  << " partitions (avg. partition size = " << avg_partition_size
+                                  << ")..." << std::endl;
                     }
 
                     auto& mphf = m_skew_index.mphfs[partition_id];
                     mphf.build_in_internal_memory(keys_in_partition.begin(),
-                                                  keys_in_partition.size(), mphf_config);
-
-                    mphf_config.num_partitions =
-                        4 * mphf_config.num_threads;  // restore default value
+                                                  keys_in_partition.size(), mphf_build_config);
 
                     std::cout << "    built mphs[" << partition_id << "] for "
                               << keys_in_partition.size() << " keys; bits/key = "
@@ -187,7 +182,7 @@ void build_skew_index(skew_index<kmer_t>& m_skew_index, parse_data<kmer_t>& data
 
                     std::cout << "    built positions[" << partition_id << "] for "
                               << positions.size() << " keys; bits/key = "
-                              << (positions.bytes() * 8.0) / positions.size() << std::endl;
+                              << (positions.num_bytes() * 8.0) / positions.size() << std::endl;
                 }
 
                 if (i == lists.size()) break;
@@ -213,13 +208,18 @@ void build_skew_index(skew_index<kmer_t>& m_skew_index, parse_data<kmer_t>& data
             assert(lists[i].size() > lower and lists[i].size() <= upper);
             uint64_t super_kmer_id = 0;
             for (auto [offset, num_kmers_in_super_kmer] : lists[i]) {
-                bit_vector_iterator<kmer_t> bv_it(m_buckets.strings,
-                                                  kmer_t::bits_per_char * offset);
+                kmer_iterator<kmer_t> it(m_buckets.strings, build_config.k,
+                                         kmer_t::bits_per_char * offset);
                 for (uint64_t i = 0; i != num_kmers_in_super_kmer; ++i) {
-                    kmer_t kmer = bv_it.read(kmer_t::bits_per_char * build_config.k);
+                    auto kmer = it.get();
+                    if (build_config.canonical) { /* take the canonical kmer */
+                        auto kmer_rc = kmer;
+                        kmer_rc.reverse_complement_inplace(build_config.k);
+                        kmer = std::min(kmer, kmer_rc);
+                    }
                     keys_in_partition.push_back(kmer);
                     super_kmer_ids_in_partition.push_back(super_kmer_id);
-                    bv_it.eat(kmer_t::bits_per_char);
+                    it.next();
                 }
                 assert(super_kmer_id < (1ULL << cvb_positions.width()));
                 ++super_kmer_id;
