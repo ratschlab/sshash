@@ -5,6 +5,11 @@
 #include "ef_sequence.hpp"
 
 namespace sshash {
+struct superkmer_result {
+    uint64_t kmer_idx;
+    uint64_t superkmer_idx;
+    uint64_t superkmer_id;
+};
 
 template <class kmer_t>
 struct buckets {
@@ -108,6 +113,26 @@ struct buckets {
         }
         return lookup_result();
     }
+    // superkmer annotation
+    lookup_result superkmer_id_to_kmer_id(uint64_t super_kmer_id, uint64_t k) const {
+        uint64_t offset = offsets.access(super_kmer_id);
+        auto [res, contig_end] = offset_to_id(offset, k);
+        return res;
+    }
+    
+
+    superkmer_result lookup_superkmer_start(uint64_t begin, uint64_t end, kmer_t target_kmer,
+                                   uint64_t k, uint64_t m) const {
+        for (uint64_t super_kmer_id = begin; super_kmer_id != end; ++super_kmer_id) {
+            auto res = lookup_in_super_kmer(super_kmer_id, target_kmer, k, m);
+            if(res.kmer_id != constants::invalid_uint64){
+                assert(is_valid(res));
+                return {res.kmer_id, superkmer_id_to_kmer_id(super_kmer_id, k).kmer_id, super_kmer_id};
+            }
+        }
+        return {constants::invalid_uint64, constants::invalid_uint64, constants::invalid_uint64};
+    }
+
 
     lookup_result lookup_canonical(uint64_t bucket_id, kmer_t target_kmer, kmer_t target_kmer_rc,
                                    uint64_t k, uint64_t m) const {
