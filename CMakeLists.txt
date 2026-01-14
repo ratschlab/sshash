@@ -48,11 +48,13 @@ else()
   set(CONDA_BUILD FALSE)
 endif()
 
+option(SSHASH_BUILD_EXECUTABLES "Build sshash executables" ON)
 MESSAGE(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 MESSAGE(STATUS "Conda build: ${CONDA_BUILD}")
 MESSAGE(STATUS "Installation prefix: ${CMAKE_INSTALL_PREFIX}")
 MESSAGE(STATUS "Compiling for processor: ${CMAKE_SYSTEM_PROCESSOR}")
 MESSAGE(STATUS "Compiling with flags:${CMAKE_CXX_FLAGS}")
+MESSAGE(STATUS "Build executables: ${SSHASH_BUILD_EXECUTABLES}")
 
 set(Z_LIB_SOURCES
   external/gz/zip_stream.cpp
@@ -85,27 +87,29 @@ add_library(sshash_static STATIC
 
 target_include_directories(sshash_static PUBLIC ${SSHASH_INCLUDE_DIRS})
 
-add_executable(sshash tools/sshash.cpp)
-target_include_directories(sshash PUBLIC ${SSHASH_INCLUDE_DIRS})
-target_link_libraries(sshash
-  z
-)
-
-# tests:
-
-add_executable(test_alphabet test/test_alphabet.cpp)
-target_link_libraries(test_alphabet
-  sshash_static
-)
-
-add_executable(check test/check.cpp)
-target_link_libraries(check
-  sshash_static
-  z
-)
-
-if (CONDA_BUILD)
-  install(TARGETS sshash
-    RUNTIME DESTINATION bin
+if(SSHASH_BUILD_EXECUTABLES)
+  add_executable(sshash tools/sshash.cpp)
+  target_include_directories(sshash PUBLIC ${SSHASH_INCLUDE_DIRS})
+  target_link_libraries(sshash
+    z
   )
+
+  # tests:
+
+  add_executable(test_alphabet test/test_alphabet.cpp)
+  target_link_libraries(test_alphabet
+    sshash_static
+  )
+
+  add_executable(check test/check.cpp)
+  target_link_libraries(check
+    sshash_static
+    z
+  )
+
+  if (CONDA_BUILD)
+    install(TARGETS sshash
+      RUNTIME DESTINATION bin
+    )
+  endif()
 endif()
