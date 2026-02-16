@@ -12,7 +12,7 @@ struct buckets_statistics {
         , m_num_minimizer_positions(0)
         , m_max_num_kmers_in_super_kmer(0)
         , m_max_bucket_size(0)
-        , m_max_buckets_per_size(0) {}
+        , m_max_sparse_buckets_per_size(0) {}
 
     buckets_statistics(uint64_t num_buckets, uint64_t num_kmers, uint64_t num_minimizer_positions)
         : m_num_buckets(num_buckets)
@@ -20,7 +20,7 @@ struct buckets_statistics {
         , m_num_minimizer_positions(num_minimizer_positions)
         , m_max_num_kmers_in_super_kmer(0)
         , m_max_bucket_size(0)
-        , m_max_buckets_per_size(0)  //
+        , m_max_sparse_buckets_per_size(0)  //
     {
         m_bucket_sizes.resize(MAX_BUCKET_SIZE + 1, 0);
         m_total_kmers.resize(MAX_BUCKET_SIZE + 1, 0);
@@ -30,7 +30,9 @@ struct buckets_statistics {
     void add_bucket_size(uint64_t bucket_size) {
         if (bucket_size < MAX_BUCKET_SIZE + 1) {
             m_bucket_sizes[bucket_size] += 1;
-            m_max_buckets_per_size = std::max(m_max_buckets_per_size, m_bucket_sizes[bucket_size]);
+            if (bucket_size > 1) {
+                m_max_sparse_buckets_per_size = std::max(m_max_sparse_buckets_per_size, m_bucket_sizes[bucket_size]);
+            }
         }
         m_max_bucket_size = std::max(m_max_bucket_size, bucket_size);
     }
@@ -54,7 +56,7 @@ struct buckets_statistics {
     uint64_t num_minimizer_positions() const { return m_num_minimizer_positions; }
     uint64_t max_num_kmers_in_super_kmer() const { return m_max_num_kmers_in_super_kmer; }
     uint64_t max_bucket_size() const { return m_max_bucket_size; }
-    uint64_t max_buckets_per_size() const { return m_max_buckets_per_size; }
+    uint64_t max_sparse_buckets_per_size() const { return m_max_sparse_buckets_per_size; }
 
     void print_full() const {
         std::cout << "=== bucket statistics (full) === \n";
@@ -144,8 +146,8 @@ struct buckets_statistics {
         if (rhs.max_bucket_size() > m_max_bucket_size) {
             m_max_bucket_size = rhs.max_bucket_size();
         }
-        if (rhs.max_buckets_per_size() > m_max_buckets_per_size) {
-            m_max_buckets_per_size = rhs.max_buckets_per_size();
+        if (rhs.max_sparse_buckets_per_size() > m_max_sparse_buckets_per_size) {
+            m_max_sparse_buckets_per_size = rhs.max_sparse_buckets_per_size();
         }
 
         assert(m_bucket_sizes.size() == rhs.m_bucket_sizes.size());
@@ -169,7 +171,7 @@ private:
 
     uint64_t m_max_num_kmers_in_super_kmer;
     uint64_t m_max_bucket_size;
-    uint64_t m_max_buckets_per_size;
+    uint64_t m_max_sparse_buckets_per_size;
 
     std::vector<uint64_t> m_bucket_sizes;
     std::vector<uint64_t> m_total_kmers;
