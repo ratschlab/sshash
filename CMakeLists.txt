@@ -60,6 +60,10 @@ set(Z_LIB_SOURCES
   external/gz/zip_stream.cpp
 )
 
+set(CITYHASH_SOURCES
+  external/cityhash/cityhash.cpp
+)
+
 set(SSHASH_SOURCES
   src/build.cpp
   src/dictionary.cpp
@@ -81,6 +85,7 @@ set(SSHASH_INCLUDE_DIRS
 # Create a static lib
 add_library(sshash_static STATIC
   ${Z_LIB_SOURCES}
+  ${CITYHASH_SOURCES}
   ${SSHASH_SOURCES}
 )
 
@@ -90,6 +95,7 @@ if(SSHASH_BUILD_EXECUTABLES)
   add_executable(sshash tools/sshash.cpp)
   target_include_directories(sshash PUBLIC ${SSHASH_INCLUDE_DIRS})
   target_link_libraries(sshash
+    sshash_static
     z
   )
 
