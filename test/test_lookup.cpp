@@ -30,6 +30,15 @@ void check(std::filesystem::path const& directory, std::vector<std::string> cons
     config.tmp_dirname = directory.string();
     dict.build(input.string(), config);
 
+    for (unsigned int byte = 128; byte < 256; ++byte) {
+        require(!Kmer::is_valid(static_cast<char>(byte)), "non-ASCII byte accepted as alphabet character");
+        auto query = strings.front().substr(0, k);
+        query.front() = static_cast<char>(byte);
+        streaming_query<decltype(dict)> stream(&dict);
+        require(stream.lookup(query.data()).kmer_id == constants::invalid_uint64,
+                "streaming lookup accepted non-ASCII input");
+    }
+
     auto verify = [&] {
         uint64_t expected_id = 0;
         for (auto const& string : strings) {
