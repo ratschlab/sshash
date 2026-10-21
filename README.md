@@ -1,7 +1,6 @@
 [![Build](https://github.com/jermp/sshash/actions/workflows/build.yml/badge.svg)](https://github.com/jermp/sshash/actions/workflows/build.yml)
 [![CodeQL](https://github.com/jermp/sshash/actions/workflows/codeql.yml/badge.svg)](https://github.com/jermp/sshash/actions/workflows/codeql.yml)
-[![Anaconda-Server Badge](https://anaconda.org/bioconda/sshash/badges/platforms.svg)](https://anaconda.org/bioconda/sshash)
-[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/sshash/README.html)
+[![install with bioconda](https://img.shields.io/conda/dn/bioconda/sshash.svg?style=flag&logo=anaconda&logoColor=lightgray&labelColor=rgb(40,47,56)&color=rgb(68,190,80)&label=Install%20with%20bioconda)](http://bioconda.github.io/recipes/sshash/README.html)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7772316.svg)](https://doi.org/10.5281/zenodo.7772316)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7239205.svg)](https://doi.org/10.5281/zenodo.7239205)
@@ -19,7 +18,7 @@
 
 The data structure is described in the following papers (most recent first):
 
-* [Optimizing sparse and skew hashing: faster k-mer dictionaries](https://www.biorxiv.org/content/10.64898/2026.01.21.700884v1) [1]
+* [Optimizing sparse and skew hashing: faster k-mer dictionaries](https://doi.org/10.1093/bioinformatics/btag264) [1]
 * [On weighted k-mer dictionaries](https://almob.biomedcentral.com/articles/10.1186/s13015-023-00226-2) [2,3]
 * [Sparse and skew hashing of k-mers](https://doi.org/10.1093/bioinformatics/btac245) [4]
 
@@ -205,29 +204,30 @@ if your queries are to be read from a (multi-line) FASTA file.
 
 ### Example 3
 
-    ./sshash build -i ../data/unitigs_stitched/salmonella_100_k31_ust.fa.gz -k 31 -m 13 --canonical -o salmonella_100.canon.sshash
-
-This example builds a dictionary from the input file `../data/unitigs_stitched/salmonella_100_k31_ust.fa.gz` (same used in Example 2), with k = 31, m = 13, and with the canonical parsing modality (option `--canonical`). The dictionary is serialized on disk to the file `salmonella_100.canon.sshash`.
-
-The "canonical" version of the dictionary offers more speed for only a little space increase, especially under low-hit workloads -- when the majority of k-mers are not found in the dictionary. (For all details, refer to the paper.)
-
-Below a comparison between the dictionary built in Example 2 (not canonical)
-and the one just built (Example 3, canonical).
-
     ./sshash query -i salmonella_100.sshash -q ../data/queries/SRR5833294.10K.fastq.gz
 
-    ./sshash query -i salmonella_100.canon.sshash -q ../data/queries/SRR5833294.10K.fastq.gz
+A k-mer and its reverse complement always share a bucket, so a lookup costs a
+single bucket probe and reports, in `kmer_orientation`, which of the two was
+found. This is the only indexing modality: there is no `--canonical` flag to
+choose, and no space-versus-speed trade-off to make.
 
-Both queries should originate the following report (reported here for reference):
+This fork also supports forward-only C++ lookup with `lookup(kmer, false)`.
+For a string set containing both orientations as distinct k-mers, set
+`build_configuration::allow_reverse_complement_duplicates = true`; each
+forward k-mer keeps its own ID. This deduplicates canonical skew-index keys
+and retains all minimizer positions for resolving the other orientation.
+Streaming queries still expect a reverse-complement-deduplicated string set.
+
+The serialized format is SSHash v6. Older v5 dictionaries must be rebuilt;
+the loader rejects a different major version with a rebuild instruction.
+
+The query above should originate the following report (reported here for reference):
 
     ==== query report:
     num_kmers = 460000
     num_positive_kmers = 46 (0.01%)
     num_searches = 42/46 (91.3043%)
     num_extensions = 4/46 (8.69565%)
-
-The canonical dictionary can be twice as fast as the regular dictionary
-for low-hit workloads, even on this tiny example, for only +0.3 bits/k-mer.
 
 ### Example 4
 
@@ -290,6 +290,8 @@ for example
 
     bash script/create_release.sh --format zip v4.0.0.tar.gz
 
+Then upload the created archive here https://github.com/jermp/sshash/releases. It should appear under the "Assets" section of the corresponding release.
+
 **Note 1**: The sha256 hash code printed at the end is needed for distribution via Bioconda.
 
 **Note 2**: Avoid dashes in the name of the release because Bioconda does not like them.
@@ -302,8 +304,8 @@ The directory [`benchmarks`](/benchmarks) includes some performance benchmarks.
 References
 ----------
 
-* [1] Giulio Ermanno Pibiri and Rob Patro. [Optimizing sparse and skew hashing: faster k-mer dictionaries](https://www.biorxiv.org/content/10.64898/2026.01.21.700884v1). BioRxiv. 2026.
+* [1] Giulio Ermanno Pibiri and Rob Patro. [Optimizing sparse and skew hashing: faster k-mer dictionaries](https://doi.org/10.1093/bioinformatics/btag264). ISMB. 2026.
 * [2] Giulio Ermanno Pibiri. [On weighted k-mer dictionaries](https://almob.biomedcentral.com/articles/10.1186/s13015-023-00226-2). Algorithms for Molecular Biology (ALGOMB). 2023.
 * [3] Giulio Ermanno Pibiri. [On weighted k-mer dictionaries](https://drops.dagstuhl.de/opus/volltexte/2022/17043/). International Workshop on Algorithms in Bioinformatics (WABI). 2022.
-* [4] Giulio Ermanno Pibiri. [Sparse and skew hashing of k-mers](https://doi.org/10.1093/bioinformatics/btac245). Bioinformatics. 2022.
+* [4] Giulio Ermanno Pibiri. [Sparse and skew hashing of k-mers](https://doi.org/10.1093/bioinformatics/btac245). ISMB. 2022.
 * [5] Schmidt, S., Khan, S., Alanko, J., Pibiri, G. E., and Tomescu, A. I. [Matchtigs: minimum plain text representation of k-mer sets](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-023-02968-z). Genome Biology 24, 136. 2023.

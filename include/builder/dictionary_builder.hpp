@@ -20,13 +20,11 @@ struct dictionary_builder  //
         d.m_m = build_config.m;
         d.m_spss.k = build_config.k;
         d.m_spss.m = build_config.m;
-        d.m_canonical = build_config.canonical;
         d.m_hasher.seed(build_config.seed);
 
         build_stats.add("input_filename", filename.c_str());
         build_stats.add("k", d.m_k);
         build_stats.add("m", d.m_m);
-        build_stats.add("canonical", d.m_canonical ? "true" : "false");
         build_stats.add("seed", build_config.seed);
         build_stats.add("num_threads", build_config.num_threads);
 
@@ -50,7 +48,6 @@ struct dictionary_builder  //
             std::cout << "num_minimizers = " << minimizers.num_minimizers() << std::endl;
             std::cout << "num_minimizer_positions = " << minimizers.num_minimizer_positions()
                       << std::endl;
-            std::cout << "num_super_kmers = " << minimizers.num_super_kmers() << std::endl;
         }
 
         do_step("step 4 (build mphf)", [&]() { build_mphf(d); });
@@ -132,22 +129,33 @@ private:
 
         minimizers.init();
 
-        const uint64_t num_super_kmers = minimizers.num_super_kmers();
+        uint64_t RAM_available_in_bytes = essentials::GiB / 2;  // at least 0.5 GB
+        {
+            const uint64_t RAM_taken_in_bytes = (f.num_bits() + strings_builder.num_bits()) / 8 +
+                                                strings_offsets_builder.num_bytes();
+            const uint64_t RAM_limit_in_bytes = build_config.ram_limit_in_GiB * essentials::GiB;
+            if (RAM_limit_in_bytes > RAM_taken_in_bytes) {
+                RAM_available_in_bytes = std::max<uint64_t>(RAM_limit_in_bytes - RAM_taken_in_bytes,
+                                                            RAM_available_in_bytes);
+            }
+        }
+
+        /* one tuple per minimizer position (the scheme is forward), so this is
+           the number of records in the tuples file */
+        const uint64_t num_tuples = minimizers.num_minimizer_positions();
         const uint64_t buffer_size = num_files_to_merge == 1
-                                         ? num_super_kmers
-                                         : ((build_config.ram_limit_in_GiB * essentials::GiB) /
-                                            (2 * sizeof(minimizer_tuple)));
-        const uint64_t num_blocks = (num_super_kmers + buffer_size - 1) / buffer_size;
-        assert(num_super_kmers > (num_blocks - 1) * buffer_size);
+                                         ? num_tuples
+                                         : (RAM_available_in_bytes / (3 * sizeof(minimizer_tuple)));
+        const uint64_t num_blocks = (num_tuples + buffer_size - 1) / buffer_size;
+        assert(num_tuples > (num_blocks - 1) * buffer_size);
 
         std::vector<std::thread> threads;
         threads.reserve(num_threads);
 
         std::vector<minimizer_tuple> buffer;
         for (uint64_t i = 0; i != num_blocks; ++i) {
-            const uint64_t n = (i == num_blocks - 1)
-                                   ? num_super_kmers - (num_blocks - 1) * buffer_size
-                                   : buffer_size;
+            const uint64_t n =
+                (i == num_blocks - 1) ? num_tuples - (num_blocks - 1) * buffer_size : buffer_size;
             buffer.resize(n);
             input.read(reinterpret_cast<char*>(buffer.data()),
                        buffer.size() * sizeof(minimizer_tuple));

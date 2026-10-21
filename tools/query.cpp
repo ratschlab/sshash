@@ -14,16 +14,19 @@ int query(int argc, char** argv) {
                "Use this option if more the one DNA line must be parsed after each header."
                " Only valid for FASTA files (not FASTQ).",
                "--multiline", false, true);
+    parser.add("mmap", "Memory-map from file on disk rather than loading in RAM.", "--mmap", false,
+               true);
     parser.add("verbose", "Verbose output.", "--verbose", false, true);
     if (!parser.parse()) return 0;
 
     auto index_filename = parser.get<std::string>("index_filename");
     auto query_filename = parser.get<std::string>("query_filename");
+    bool mmap = parser.get<bool>("mmap");
     bool verbose = parser.get<bool>("verbose");
     bool multiline = parser.get<bool>("multiline");
 
     dictionary_type dict;
-    load_dictionary(dict, index_filename, verbose);
+    open_dictionary(dict, index_filename, mmap, verbose);
 
     essentials::logger("performing queries from file '" + query_filename + "'...");
     essentials::timer<std::chrono::high_resolution_clock, std::chrono::milliseconds> t;
@@ -41,6 +44,8 @@ int query(int argc, char** argv) {
     query_stats.add("num_invalid_kmers", report.num_invalid_kmers);
     query_stats.add("num_searches", report.num_searches);
     query_stats.add("num_extensions", report.num_extensions);
+    query_stats.add("num_skipped_singleton_lookups", report.num_skipped_singleton_lookups);
+    query_stats.add("num_bucket_cache_hits", report.num_bucket_cache_hits);
     query_stats.add("elapsed_millisec", uint64_t(t.elapsed()));
 
     std::cout << "==== query report:\n";
@@ -57,6 +62,9 @@ int query(int argc, char** argv) {
     std::cout << "num_extensions = " << report.num_extensions << "/" << report.num_positive_kmers
               << " (" << (report.num_extensions * 100.0) / report.num_positive_kmers << "%)"
               << std::endl;
+    std::cout << "num_skipped_singleton_lookups = " << report.num_skipped_singleton_lookups
+              << std::endl;
+    std::cout << "num_bucket_cache_hits = " << report.num_bucket_cache_hits << std::endl;
     std::cout << "elapsed = " << t.elapsed() / 1000 << " sec / ";
     std::cout << t.elapsed() / 1000 / 60 << " min / ";
     std::cout << (t.elapsed() * 1e6) / report.num_kmers << " ns/kmer" << std::endl;
