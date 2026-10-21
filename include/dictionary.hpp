@@ -110,6 +110,47 @@ struct dictionary  //
     /* Accessor for internal offsets structure */
     Offsets const& strings_offsets() const { return m_spss.strings_offsets; }
 
+    /* Enumerate indexed occurrences of an m-mer as absolute base offsets.
+       Unlike full-k-mer lookup, short-seed searches need every occurrence,
+       including all entries in a heavy-load bucket. */
+    template <typename Callback>
+    void call_minimizer_positions(uint64_t minimizer, Callback&& callback) const {
+        if (!m_num_kmers) return;
+        auto emit = [&](uint64_t encoded_offset) {
+            uint64_t offset = m_spss.strings_offsets.decode(encoded_offset).absolute_offset;
+            Kmer observed = util::read_kmer_at<Kmer>(strings(), m_m,
+                                                   Kmer::bits_per_char * offset);
+            if (uint64_t(observed) != minimizer) {
+                if (!m_canonical) return false;
+                observed.reverse_complement_inplace(m_m);
+                if (uint64_t(observed) != minimizer) return false;
+            }
+            callback(offset);
+            return true;
+        };
+
+        uint64_t code = m_ssi.codewords.lookup(minimizer);
+        if ((code & 1) == bucket_t::SINGLETON) {
+            emit(code >> 1);
+        } else if ((code & 3) == bucket_t::MIDLOAD) {
+            code >>= 2;
+            uint64_t size = (code & ((uint64_t(1) << constants::min_l) - 1)) + 2;
+            uint64_t begin = m_ssi.begin_buckets_of_size[size]
+                           + (code >> constants::min_l) * size;
+            for (uint64_t i = 0; i < size; ++i) {
+                if (!emit(m_ssi.mid_load_buckets.access(begin + i))) break;
+            }
+        } else {
+            assert((code & 3) == bucket_t::HEAVYLOAD);
+            // Heavy buckets are contiguous. The stored code supplies their
+            // start; the next different minimizer marks the end.
+            uint64_t begin = code >> 5;
+            for (uint64_t i = begin; i < m_ssi.ski.heavy_load_buckets.size(); ++i) {
+                if (!emit(m_ssi.ski.heavy_load_buckets.access(i))) break;
+            }
+        }
+    }
+
     iterator at_string_id(const uint64_t string_id) const {
         assert(string_id < num_strings());
         auto [begin, end] = string_offsets(string_id);
