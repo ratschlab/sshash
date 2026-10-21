@@ -143,12 +143,9 @@ private:
 
     minimizer_tuple const* next_begin() {
         minimizer_tuple const* begin = m_bucket_begin;
+        if (begin == m_end) return begin;
         uint64_t prev_minimizer = (*begin).minimizer;
-        while (begin != m_end) {
-            ++begin;
-            uint64_t curr_minimizer = (*begin).minimizer;
-            if (curr_minimizer != prev_minimizer) break;
-        }
+        while (++begin != m_end && begin->minimizer == prev_minimizer) {}
         return begin;
     }
 };
