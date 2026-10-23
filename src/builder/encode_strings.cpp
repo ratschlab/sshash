@@ -1,5 +1,8 @@
+#include "include/kmer.hpp"
 #include "include/util.hpp"
 #include "external/gz/zip_stream.hpp"
+
+#include <type_traits>
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -160,7 +163,8 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
         }
 
         uint64_t i = 0;
-        if constexpr (Kmer::bits_per_char == 2) {
+        // The vectorized encoder implements the DNA mapping, not every two-bit alphabet.
+        if constexpr (std::is_same_v<Kmer, dna_uint_kmer_t<decltype(Kmer::bits)>>) {
 #if !defined(SSHASH_USE_TRADITIONAL_NUCLEOTIDE_ENCODING) and defined(__AVX2__)
 
             /* process 32 bytes at a time */
