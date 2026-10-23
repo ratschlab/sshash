@@ -1,6 +1,8 @@
 #include <chrono>
 #include <filesystem>
 #include <sstream>
+#include <map>
+#include <set>
 
 #include "src/builder/build.cpp"
 #include "src/dictionary.cpp"
@@ -40,6 +42,21 @@ void check(std::filesystem::path const& directory, std::vector<std::string> cons
     }
 
     auto verify = [&] {
+        std::map<uint64_t, std::set<uint64_t>> expected_positions;
+        uint64_t base = 0;
+        for (auto const& string : strings) {
+            for (uint64_t i = 0; i + k <= string.size(); ++i) {
+                auto word = util::string_to_uint_kmer<Kmer>(string.data() + i, k);
+                auto mini = util::compute_minimizer(word, k, m, dict.hasher());
+                expected_positions[mini.minimizer].insert(base + i + mini.pos_in_kmer);
+            }
+            base += string.size();
+        }
+        for (auto const& [mini, expected] : expected_positions) {
+            std::set<uint64_t> observed;
+            dict.call_minimizer_positions(mini, [&](uint64_t offset) { observed.insert(offset); });
+            require(observed == expected, "minimizer enumeration lost or added indexed positions");
+        }
         uint64_t expected_id = 0;
         for (auto const& string : strings) {
             streaming_query<decltype(dict)> stream(&dict);

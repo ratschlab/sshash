@@ -140,25 +140,9 @@ private:
             return callback(position);
         };
 
-        uint64_t code = m_ssi.codewords.lookup(minimizer);
-        if ((code & 1) == bucket_t::SINGLETON) {
-            emit(code >> 1);
-        } else if ((code & 3) == bucket_t::MIDLOAD) {
-            code >>= 2;
-            uint64_t size = (code & ((uint64_t(1) << constants::min_l) - 1)) + 2;
-            uint64_t begin = m_ssi.begin_buckets_of_size[size]
-                           + (code >> constants::min_l) * size;
-            for (uint64_t i = 0; i < size; ++i) {
-                if (!emit(m_ssi.mid_load_buckets.access(begin + i))) break;
-            }
-        } else {
-            assert((code & 3) == bucket_t::HEAVYLOAD);
-            // Heavy buckets are contiguous. The stored code supplies their
-            // start; the next different minimizer marks the end.
-            uint64_t begin = code >> 5;
-            for (uint64_t i = begin; i < m_ssi.ski.heavy_load_buckets.size(); ++i) {
-                if (!emit(m_ssi.ski.heavy_load_buckets.access(i))) break;
-            }
+        auto positions = m_ssi.lookup(minimizer);
+        for (uint64_t i = 0; i < positions.size(); ++i, ++positions) {
+            if (!emit(*positions)) break;
         }
     }
 
