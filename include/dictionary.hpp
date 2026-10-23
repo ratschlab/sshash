@@ -38,10 +38,11 @@ struct dictionary  //
 
     /*
         Lookup queries. A kmer and its reverse complement share a bucket, so a
-        lookup always costs a single probe and reports, via
+        reverse-complement-aware lookup costs a single probe and reports, via
         `lookup_result::kmer_orientation`, which of the two was found. Pass
         `check_reverse_complement = false` to restrict the answer to kmers
-        occurring in forward orientation.
+        occurring in forward orientation. If the first match is reversed, this
+        may scan the remaining indexed minimizer positions for a forward match.
     */
     lookup_result lookup(char const* string_kmer, bool check_reverse_complement = true) const;
     lookup_result lookup(Kmer uint_kmer, bool check_reverse_complement = true) const;
@@ -115,9 +116,9 @@ struct dictionary  //
     /* Accessor for internal offsets structure */
     Offsets const& strings_offsets() const { return m_spss.strings_offsets; }
 
-    /* Enumerate indexed occurrences of an m-mer as absolute base offsets.
-       Unlike full-k-mer lookup, short-seed searches need every occurrence,
-       including all entries in a heavy-load bucket. */
+    /* Enumerate indexed positions of a canonical encoded m-mer, as absolute
+       base offsets. This includes all entries in a heavy-load bucket, but not
+       occurrences of the m-mer that were not selected as minimizers. */
     template <typename Callback>
     void call_minimizer_positions(uint64_t minimizer, Callback&& callback) const {
         visit_minimizer_positions(minimizer, [&](auto position) {

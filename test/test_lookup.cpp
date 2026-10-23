@@ -19,6 +19,9 @@ template <typename Kmer, typename Offsets>
 void check(std::filesystem::path const& directory, std::vector<std::string> const& strings,
            uint64_t k, uint64_t m, bool check_stream) {
     dictionary<Kmer, Offsets> dict;
+    dict.call_minimizer_positions(0, [](uint64_t) {
+        throw std::runtime_error("empty dictionary emitted a minimizer position");
+    });
     auto input = directory / "input.fa";
     {
         std::ofstream out(input);
@@ -44,7 +47,10 @@ void check(std::filesystem::path const& directory, std::vector<std::string> cons
     auto verify = [&] {
         std::map<uint64_t, std::set<uint64_t>> expected_positions;
         uint64_t base = 0;
+        uint64_t string_id = 0;
         for (auto const& string : strings) {
+            auto [begin, end] = dict.string_offsets(string_id++);
+            require(begin == base && end == base + string.size(), "incorrect string boundaries");
             for (uint64_t i = 0; i + k <= string.size(); ++i) {
                 auto word = util::string_to_uint_kmer<Kmer>(string.data() + i, k);
                 auto mini = util::compute_minimizer(word, k, m, dict.hasher());
@@ -52,10 +58,16 @@ void check(std::filesystem::path const& directory, std::vector<std::string> cons
             }
             base += string.size();
         }
-        for (auto const& [mini, expected] : expected_positions) {
+        // Include absent canonical keys, not just the minimizers seen above.
+        for (uint64_t mini = 0; mini < (uint64_t(1) << (Kmer::bits_per_char * m)); ++mini) {
+            if (util::canonical_mmer<Kmer>(mini, m) != mini) continue;
             std::set<uint64_t> observed;
-            dict.call_minimizer_positions(mini, [&](uint64_t offset) { observed.insert(offset); });
-            require(observed == expected, "minimizer enumeration lost or added indexed positions");
+            dict.call_minimizer_positions(mini, [&](uint64_t offset) {
+                require(observed.insert(offset).second, "minimizer enumeration repeated a position");
+            });
+            auto expected = expected_positions.find(mini);
+            require(expected == expected_positions.end() ? observed.empty() : observed == expected->second,
+                    "minimizer enumeration lost or added indexed positions");
         }
         uint64_t expected_id = 0;
         for (auto const& string : strings) {
@@ -89,6 +101,12 @@ template <typename Offsets>
 void check_dna(std::filesystem::path const& directory) {
     using Kmer = dna_uint_kmer_t<uint64_t>;
     check<Kmer, Offsets>(directory, {"ACGT"}, 3, 1, false);
+    // Endpoints at powers of two need an extra bit; exercise neighboring sizes
+    // and multiple records, including after serialization.
+    for (auto sequence : {"AAA", "AAAC", "AAACC", "AAACCGT", "AAACCGTA", "AAACCGTAT"}) {
+        check<Kmer, Offsets>(directory, {sequence}, 3, 1, false);
+    }
+    check<Kmer, Offsets>(directory, {"AAAC", "CCGT"}, 3, 1, false);
     // One record per kmer forces heavy buckets; both DNA orientations share
     // canonical skew-index keys but must retain their distinct forward IDs.
     std::vector<std::string> kmers;
@@ -125,6 +143,13 @@ int main() {
         check<aa_uint_kmer_t<uint64_t>, decoded_offsets>(directory,
             {"MKWVTFISRLDPQEAHNYCG"}, 3, 1, true);
         check<aa_uint_kmer_t<__uint128_t>, encoded_offsets>(directory, protein, 21, 3, true);
+        // Dense protein buckets require more control bits than sparse buckets.
+        std::vector<std::string> protein_kmers;
+        const std::string alphabet = "ACDEFGHIKLMNPQRSTVWY";
+        for (char a : alphabet) for (char b : alphabet) for (char c : alphabet) {
+            protein_kmers.push_back(std::string{a, b, c});
+        }
+        check<aa_uint_kmer_t<uint64_t>, decoded_offsets>(directory, protein_kmers, 3, 1, true);
         std::filesystem::remove_all(directory);
     } catch (std::exception const& error) {
         std::cerr << error.what() << '\n';

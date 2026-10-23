@@ -199,11 +199,7 @@ namespace util {
 
 static inline void check_version_number(essentials::version_number const& vnum) {
     if (vnum.x != constants::current_version_number::x) {
-        throw std::runtime_error("SSHash index version " + std::to_string(vnum.x) + "." +
-                                 std::to_string(vnum.y) + "." + std::to_string(vnum.z) +
-                                 " is incompatible with reader major version " +
-                                 std::to_string(constants::current_version_number::x) +
-                                 "; rebuild the index");
+        throw std::runtime_error("MAJOR index version mismatch: SSHash index needs rebuilding");
     }
 }
 

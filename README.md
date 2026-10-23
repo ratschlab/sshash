@@ -206,20 +206,28 @@ if your queries are to be read from a (multi-line) FASTA file.
 
     ./sshash query -i salmonella_100.sshash -q ../data/queries/SRR5833294.10K.fastq.gz
 
-A k-mer and its reverse complement always share a bucket, so a lookup costs a
-single bucket probe and reports, in `kmer_orientation`, which of the two was
-found. This is the only indexing modality: there is no `--canonical` flag to
-choose, and no space-versus-speed trade-off to make.
+A k-mer and its reverse complement share a bucket. The default lookup checks
+both orientations with a single bucket probe and reports which was found in
+`kmer_orientation`. There is no `--canonical` indexing flag.
 
-This fork also supports forward-only C++ lookup with `lookup(kmer, false)`.
+Use `lookup(kmer, false)` for forward-only C++ lookup. If the initial match is
+reversed, this may scan the remaining indexed minimizer positions for a forward match.
 For a string set containing both orientations as distinct k-mers, set
 `build_configuration::allow_reverse_complement_duplicates = true`; each
 forward k-mer keeps its own ID. This deduplicates canonical skew-index keys
 and retains all minimizer positions for resolving the other orientation.
 Streaming queries still expect a reverse-complement-deduplicated string set.
 
+`dictionary::call_minimizer_positions(minimizer, callback)` takes a canonical
+encoded m-mer and calls the callback with each indexed absolute base offset,
+including all positions in heavy buckets. It does not enumerate occurrences
+that were not selected as minimizers. Empty dictionaries and absent minimizers
+produce no callbacks.
+
 The serialized format is SSHash v6. Older v5 dictionaries must be rebuilt;
 the loader rejects a different major version with a rebuild instruction.
+Encoded-offset dictionaries built before the endpoint-width fix also need
+rebuilding if their total stored sequence length is a power of two.
 
 The query above should originate the following report (reported here for reference):
 
