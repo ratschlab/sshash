@@ -159,6 +159,7 @@ struct build_configuration {
         , lambda(constants::lambda)
 
         , weighted(false)
+        , allow_reverse_complement_duplicates(false)
         , verbose(true)
 
         , tmp_dirname(constants::default_tmp_dirname)
@@ -174,6 +175,9 @@ struct build_configuration {
     double lambda;  // drive PTHash trade-off
 
     bool weighted;
+    // Keep both orientations as separate IDs; deduplicate only skew-index keys.
+    // This is a construction option and does not change the v6 file format.
+    bool allow_reverse_complement_duplicates;
     bool verbose;
 
     std::string tmp_dirname;

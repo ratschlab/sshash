@@ -55,8 +55,15 @@ void dictionary_builder<Kmer, Offsets>::build_sparse_and_skew_index(
     // list_id is bounded by the maximum number of buckets sharing the same size
     const uint64_t bits_for_list_id =
         std::ceil(std::log2(buckets_stats.max_sparse_buckets_per_size() + 1));
+    // Skew codewords store a position followed by a three-bit partition ID and
+    // a two-bit status. Their width can exceed the singleton and sparse codes.
+    const uint64_t bits_for_skew_code = num_minimizer_positions_of_buckets_in_skew_index
+        ? 5 + bits::util::ceil_log2_uint64(num_minimizer_positions_of_buckets_in_skew_index)
+        : 0;
     const uint64_t num_bits_for_control =
-        std::max(num_bits_per_offset + 1, 2 + constants::min_l + bits_for_list_id);
+        std::max({num_bits_per_offset + 1,
+                  2 + constants::min_l + bits_for_list_id,
+                  bits_for_skew_code});
 
     if (build_config.verbose) {
         std::cout << "num_bits_per_offset = " << num_bits_per_offset << std::endl;
@@ -373,7 +380,20 @@ void dictionary_builder<Kmer, Offsets>::build_sparse_and_skew_index(
                     }
 
                     auto& F = mphfs[partition_id];
-                    F.build_in_internal_memory(kmers.begin(), kmers.size(), mphf_build_config);
+                    if (build_config.allow_reverse_complement_duplicates and Kmer::has_reverse_complement) {
+                        // BASIC graphs retain both orientations in the SPSS,
+                        // while the skew index uses canonical keys. Every
+                        // minimizer occurrence remains in heavy_load_buckets
+                        // for forward-only lookup of the other orientation.
+                        auto distinct_kmers = kmers;
+                        std::sort(distinct_kmers.begin(), distinct_kmers.end());
+                        distinct_kmers.erase(std::unique(distinct_kmers.begin(), distinct_kmers.end()),
+                                             distinct_kmers.end());
+                        F.build_in_internal_memory(distinct_kmers.begin(), distinct_kmers.size(), mphf_build_config);
+                        cvb_positions.resize(distinct_kmers.size(), num_bits_per_pos);
+                    } else {
+                        F.build_in_internal_memory(kmers.begin(), kmers.size(), mphf_build_config);
+                    }
 
                     if (build_config.verbose) {
                         std::cout << "    built mphs[" << partition_id << "] for " << kmers.size()

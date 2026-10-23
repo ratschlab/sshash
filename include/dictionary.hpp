@@ -38,10 +38,11 @@ struct dictionary  //
 
     /*
         Lookup queries. A kmer and its reverse complement share a bucket, so a
-        lookup always costs a single probe and reports, via
+        reverse-complement-aware lookup costs a single probe and reports, via
         `lookup_result::kmer_orientation`, which of the two was found. Pass
         `check_reverse_complement = false` to restrict the answer to kmers
-        occurring in forward orientation.
+        occurring in forward orientation. If the first match is reversed, this
+        may scan the remaining indexed minimizer positions for a forward match.
     */
     lookup_result lookup(char const* string_kmer, bool check_reverse_complement = true) const;
     lookup_result lookup(Kmer uint_kmer, bool check_reverse_complement = true) const;
@@ -115,6 +116,38 @@ struct dictionary  //
     /* Accessor for internal offsets structure */
     Offsets const& strings_offsets() const { return m_spss.strings_offsets; }
 
+    /* Enumerate indexed positions of a canonical encoded m-mer, as absolute
+       base offsets. This includes all entries in a heavy-load bucket, but not
+       occurrences of the m-mer that were not selected as minimizers. */
+    template <typename Callback>
+    void call_minimizer_positions(uint64_t minimizer, Callback&& callback) const {
+        visit_minimizer_positions(minimizer, [&](auto position) {
+            callback(position.absolute_offset);
+            return true;
+        });
+    }
+
+private:
+    // Stop when the callback returns false. Keep decoded offsets so both offset
+    // representations can also use this enumeration for forward-only lookup.
+    template <typename Callback>
+    void visit_minimizer_positions(uint64_t minimizer, Callback&& callback) const {
+        if (!m_num_kmers) return;
+        auto emit = [&](uint64_t encoded_offset) {
+            auto position = m_spss.strings_offsets.decode(encoded_offset);
+            Kmer observed = util::read_kmer_at<Kmer>(strings(), m_m,
+                                                   Kmer::bits_per_char * position.absolute_offset);
+            if (util::canonical_mmer<Kmer>(uint64_t(observed), m_m) != minimizer) return false;
+            return callback(position);
+        };
+
+        auto positions = m_ssi.lookup(minimizer);
+        for (uint64_t i = 0; i < positions.size(); ++i, ++positions) {
+            if (!emit(*positions)) break;
+        }
+    }
+
+public:
     iterator at_string_id(const uint64_t string_id) const {
         assert(string_id < num_strings());
         auto [begin, end] = string_offsets(string_id);

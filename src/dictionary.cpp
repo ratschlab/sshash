@@ -21,7 +21,15 @@ lookup_result dictionary<Kmer, Offsets>::lookup(Kmer uint_kmer,
     auto mini_info = util::compute_minimizer(uint_kmer, uint_kmer_rc, m_k, m_m, m_hasher);
     auto res = lookup(uint_kmer, uint_kmer_rc, mini_info);
     if (!check_reverse_complement and res.kmer_orientation == constants::backward_orientation) {  //
-        return lookup_result();
+        // Both orientations may be stored as distinct kmers. The canonical
+        // skew index selects one of them; search the full locate set only when
+        // that answer has the wrong orientation. Passing the forward kmer in
+        // both slots still checks both candidate loci but rejects RC matches.
+        res = lookup_result();
+        visit_minimizer_positions(mini_info.minimizer, [&](auto position) {
+            res = m_spss.lookup_from_positions(&position, 1, uint_kmer, uint_kmer, mini_info);
+            return res.kmer_id == constants::invalid_uint64;
+        });
     }
     return res;
 }
