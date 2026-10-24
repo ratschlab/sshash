@@ -1,5 +1,6 @@
 #include "include/util.hpp"
 #include "external/gz/zip_stream.hpp"
+#include <cstring>
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -10,40 +11,44 @@ namespace sshash {
 
 namespace util {
 
-#if defined(__AVX2__)
-/*
-    Pack 32 two-bit values, one per byte, into a single 64-bit word.
-*/
-inline uint64_t pack2bits(__m256i values) {
-    // collect bit-0 plane
-    __m256i bit0 = _mm256_slli_epi16(values, 7);
-    uint32_t mask0 = _mm256_movemask_epi8(bit0);
-
-    // collect bit-1 plane
-    __m256i bit1 = _mm256_slli_epi16(values, 6);
-    uint32_t mask1 = _mm256_movemask_epi8(bit1);
-
-    // interleave into the 64-bit result
-    uint64_t even = _pdep_u64(mask0, 0x5555555555555555ULL);  // 010101...
-    uint64_t odd = _pdep_u64(mask1, 0xAAAAAAAAAAAAAAAAULL);   // 101010...
-    return even | odd;
-}
-#endif
-
 template <typename Kmer>
 inline uint64_t pack_word(char const* sequence) {
-#if defined(__AVX2__)
-    if constexpr (Kmer::bits_per_char == 2) {
-        uint8_t codes[32];
-        for (uint64_t j = 0; j != 32; ++j) {
+    constexpr uint64_t bits_per_char = Kmer::bits_per_char;
+    constexpr uint64_t chars_per_word = 64 / bits_per_char;
+#if defined(__AVX2__) && defined(__BMI2__)
+    if constexpr (bits_per_char <= 8) {
+        constexpr uint64_t vector_bytes = chars_per_word <= 32 ? 32 : 64;
+        // A vector lets GCC insert mapped bytes directly into registers.
+        using byte_vector [[gnu::vector_size(vector_bytes)]] = uint8_t;
+        byte_vector codes{};
+        for (uint64_t j = 0; j != chars_per_word; ++j) {
             codes[j] = Kmer::char_to_uint(sequence[j]);
         }
-        return pack2bits(_mm256_loadu_si256(reinterpret_cast<__m256i const*>(codes)));
+        constexpr uint64_t positions = [] {
+            uint64_t mask = 0;
+            for (uint64_t j = 0; j != chars_per_word; ++j)
+                mask |= uint64_t(1) << (j * bits_per_char);
+            return mask;
+        }();
+        uint64_t word = 0;
+#pragma GCC unroll 8
+        for (uint64_t bit = 0; bit != bits_per_char; ++bit) {
+            uint64_t plane = 0;
+            for (uint64_t j = 0; j != vector_bytes; j += 32) {
+                __m256i values;
+                std::memcpy(&values, reinterpret_cast<uint8_t const*>(&codes) + j, 32);
+                // Move this bit to each byte's high bit, then collect those bits.
+                auto shifted = _mm256_slli_epi16(values, 7 - bit);
+                plane |= uint64_t(uint32_t(_mm256_movemask_epi8(shifted))) << j;
+            }
+            word |= _pdep_u64(plane, positions << bit);
+        }
+        return word;
     }
 #endif
     uint64_t word = 0;
-    for (uint64_t j = 0; j != 64 / Kmer::bits_per_char; ++j) {
-        word |= uint64_t(Kmer::char_to_uint(sequence[j])) << (j * Kmer::bits_per_char);
+    for (uint64_t j = 0; j != chars_per_word; ++j) {
+        word |= uint64_t(Kmer::char_to_uint(sequence[j])) << (j * bits_per_char);
     }
     return word;
 }
