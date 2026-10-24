@@ -1,8 +1,5 @@
-#include "include/kmer.hpp"
 #include "include/util.hpp"
 #include "external/gz/zip_stream.hpp"
-
-#include <type_traits>
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -15,18 +12,9 @@ namespace util {
 
 #if defined(__AVX2__)
 /*
-    This function takes 32 bytes and packs the two bits
-    in positions 1 and 2 (from right) of each byte into
-    a single 64-bit word.
-
-    This works with the map:
-    A -> 00; C -> 01; G -> 11; T -> 10.
+    Pack 32 two-bit values, one per byte, into a single 64-bit word.
 */
-inline uint64_t pack2bits_shift1(__m256i v) {
-    // shift >> 1, then mask by 3 to isolate the relevant bits
-    __m256i shifted = _mm256_srli_epi16(v, 1);
-    __m256i values = _mm256_and_si256(shifted, _mm256_set1_epi8(3));
-
+inline uint64_t pack2bits(__m256i values) {
     // collect bit-0 plane
     __m256i bit0 = _mm256_slli_epi16(values, 7);
     uint32_t mask0 = _mm256_movemask_epi8(bit0);
@@ -163,14 +151,17 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
         }
 
         uint64_t i = 0;
-        // The vectorized encoder implements the DNA mapping, not every two-bit alphabet.
-        if constexpr (std::is_same_v<Kmer, dna_uint_kmer_t<decltype(Kmer::bits)>>) {
-#if !defined(SSHASH_USE_TRADITIONAL_NUCLEOTIDE_ENCODING) and defined(__AVX2__)
+        if constexpr (Kmer::bits_per_char == 2) {
+#if defined(__AVX2__)
 
             /* process 32 bytes at a time */
             for (; i + 32 <= n; i += 32) {
-                __m256i v = _mm256_loadu_si256(reinterpret_cast<__m256i const*>(&sequence[i]));
-                uint64_t word = util::pack2bits_shift1(v);
+                uint8_t codes[32];
+                for (uint64_t j = 0; j != 32; ++j) {
+                    codes[j] = Kmer::char_to_uint(sequence[i + j]);
+                }
+                __m256i values = _mm256_loadu_si256(reinterpret_cast<__m256i const*>(codes));
+                uint64_t word = util::pack2bits(values);
                 strings_builder.append_bits(word, 64);
             }
 #endif
