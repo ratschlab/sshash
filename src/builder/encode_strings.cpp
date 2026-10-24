@@ -1,7 +1,11 @@
+#include "include/kmer.hpp"
+#include <array>
+#include <cstring>
+#include <utility>
 #include "include/util.hpp"
 #include "external/gz/zip_stream.hpp"
 
-#if defined(__AVX2__)
+#if defined(__AVX2__) || defined(__BMI2__)
 #include <immintrin.h>
 #include <x86intrin.h>
 #endif
@@ -46,6 +50,104 @@ inline uint64_t pack_word(char const* sequence) {
         word |= uint64_t(Kmer::char_to_uint(sequence[j])) << (j * Kmer::bits_per_char);
     }
     return word;
+}
+
+template <typename Kmer>
+struct batch_mapper {
+    static uint64_t convert(char c) { return Kmer::char_to_uint(c); }
+};
+// Keep scalar lookup table-based; this form lets the bulk mapping loop vectorize.
+template <typename Storage>
+struct batch_mapper<aa_uint_kmer_t<Storage>> {
+    static uint64_t convert(char c) {
+        const unsigned char code = (static_cast<unsigned char>(c) | 0x20) - 'a';
+        return code < 26 ? code + 2 * (code == 23) - (code >= 24) : uint64_t(-1);
+    }
+};
+template <unsigned B, unsigned Group = 1, size_t N>
+inline void compact_bytes(uint64_t (&words)[N]) {
+    if constexpr (Group < 8 && B < 8) {
+        constexpr uint64_t mask = [] {
+            uint64_t result = 0;
+            for (unsigned bit = 0; bit < 64; bit += 2 * Group * 8)
+                result |= ((uint64_t(1) << (Group * B)) - 1) << bit;
+            return result;
+        }();
+        for (size_t i = 0; i < N; ++i)
+            words[i] = (words[i] & mask) |
+                ((words[i] >> (Group * (8 - B))) & (mask << (Group * B)));
+        compact_bytes<B, Group * 2>(words);
+    }
+}
+template <unsigned B, size_t I, size_t N>
+inline uint64_t joined_word(uint64_t const (&groups)[N]) {
+    constexpr unsigned group_bits = 8 * B;
+    constexpr size_t first = 64 * I / group_bits;
+    constexpr unsigned skip = 64 * I % group_bits;
+    uint64_t result = groups[first] >> skip;
+    // These bounds and shifts are compile-time constants after unrolling.
+    for (size_t j = first + 1; j < N && j * group_bits < 64 * (I + 1); ++j)
+        result |= groups[j] << (j * group_bits - 64 * I);
+    return result;
+}
+template <unsigned B, size_t N, size_t... I>
+inline auto join_groups(uint64_t const (&groups)[N], std::index_sequence<I...>) {
+    return std::array<uint64_t, sizeof...(I)>{joined_word<B, I>(groups)...};
+}
+template <size_t N>
+inline void write_words(uint64_t* destination, unsigned shift, std::array<uint64_t, N> const& words) {
+    if (shift == 0) {
+        std::copy(words.begin(), words.end(), destination);
+    } else {
+        destination[0] |= words[0] << shift;
+        for (size_t j = 1; j < N; ++j)
+            destination[j] = (words[j] << shift) | (words[j - 1] >> (64 - shift));
+        destination[N] = words[N - 1] >> (64 - shift);
+    }
+}
+template <typename Kmer, size_t N>
+inline auto pack_batch(char const* sequence) {
+    constexpr unsigned B = Kmer::bits_per_char;
+    static_assert(N % 64 == 0);
+    uint8_t codes[N];
+    for (size_t j = 0; j != N; ++j) codes[j] = batch_mapper<Kmer>::convert(sequence[j]);
+    uint64_t groups[N / 8];
+#if defined(__BMI2__)
+    std::memcpy(groups, codes, sizeof(groups));
+    // Select the low B bits from each byte.
+    constexpr uint64_t mask = uint64_t(0x0101010101010101) * ((1u << B) - 1);
+    for (size_t j = 0; j != N / 8; ++j) groups[j] = _pext_u64(groups[j], mask);
+#else
+    // Construct byte lanes explicitly so this also works on big-endian machines.
+    for (size_t g = 0; g != N / 8; ++g) {
+        groups[g] = 0;
+        for (unsigned j = 0; j != 8; ++j)
+            groups[g] |= uint64_t(codes[8 * g + j]) << (8 * j);
+    }
+    compact_bytes<B>(groups);
+#endif
+    return join_groups<B>(groups, std::make_index_sequence<N * B / 64>{});
+}
+// Keep the bulk loop out of encode_strings so short records retain its small loop.
+template <typename Kmer>
+[[gnu::noinline]] void append_record_batches(bits::bit_vector::builder& output, char const* sequence, uint64_t n) {
+    constexpr uint64_t batch_chars = 128;
+    constexpr uint64_t words_per_batch = batch_chars * Kmer::bits_per_char / 64;
+    const uint64_t count = n / batch_chars;
+    const uint64_t old_bits = output.num_bits();
+    const unsigned shift = old_bits % 64;
+    // Grow once per record, then write whole words, carrying across its bit offset.
+    output.resize(old_bits + count * words_per_batch * 64);
+    uint64_t* destination = output.data().data() + old_bits / 64;
+    for (uint64_t j = 0; j != count; ++j) {
+        auto words = pack_batch<Kmer, batch_chars>(sequence + j * batch_chars);
+        write_words(destination + j * words_per_batch, shift, words);
+    }
+    uint64_t i = count * batch_chars;
+    constexpr uint64_t chars_per_word = 64 / Kmer::bits_per_char;
+    for (; i + chars_per_word <= n; i += chars_per_word)
+        output.append_bits(pack_word<Kmer>(sequence + i), chars_per_word * Kmer::bits_per_char);
+    for (; i < n; ++i) output.append_bits(Kmer::char_to_uint(sequence[i]), Kmer::bits_per_char);
 }
 
 }  // namespace util
@@ -168,6 +270,12 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
                       << " bases, " << num_kmers << " kmers" << std::endl;
         }
 
+        if constexpr (Kmer::bits_per_char != 2 && Kmer::bits_per_char <= 8) {
+            if (n >= 128) {
+                util::append_record_batches<Kmer>(strings_builder, sequence.data(), n);
+                continue;
+            }
+        }
         uint64_t i = 0;
         constexpr uint64_t chars_per_word = 64 / Kmer::bits_per_char;
         constexpr uint64_t bits_per_word = chars_per_word * Kmer::bits_per_char;
