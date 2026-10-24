@@ -1,11 +1,10 @@
 #include "include/kmer.hpp"
 #include <array>
 #include <cstring>
-#include <utility>
 #include "include/util.hpp"
 #include "external/gz/zip_stream.hpp"
 
-#if defined(__AVX2__) || defined(__BMI2__)
+#if defined(__AVX2__)
 #include <immintrin.h>
 #include <x86intrin.h>
 #endif
@@ -64,36 +63,6 @@ struct batch_mapper<aa_uint_kmer_t<Storage>> {
         return code < 26 ? code + 2 * (code == 23) - (code >= 24) : uint64_t(-1);
     }
 };
-template <unsigned B, unsigned Group = 1, size_t N>
-inline void compact_bytes(uint64_t (&words)[N]) {
-    if constexpr (Group < 8 && B < 8) {
-        constexpr uint64_t mask = [] {
-            uint64_t result = 0;
-            for (unsigned bit = 0; bit < 64; bit += 2 * Group * 8)
-                result |= ((uint64_t(1) << (Group * B)) - 1) << bit;
-            return result;
-        }();
-        for (size_t i = 0; i < N; ++i)
-            words[i] = (words[i] & mask) |
-                ((words[i] >> (Group * (8 - B))) & (mask << (Group * B)));
-        compact_bytes<B, Group * 2>(words);
-    }
-}
-template <unsigned B, size_t I, size_t N>
-inline uint64_t joined_word(uint64_t const (&groups)[N]) {
-    constexpr unsigned group_bits = 8 * B;
-    constexpr size_t first = 64 * I / group_bits;
-    constexpr unsigned skip = 64 * I % group_bits;
-    uint64_t result = groups[first] >> skip;
-    // These bounds and shifts are compile-time constants after unrolling.
-    for (size_t j = first + 1; j < N && j * group_bits < 64 * (I + 1); ++j)
-        result |= groups[j] << (j * group_bits - 64 * I);
-    return result;
-}
-template <unsigned B, size_t N, size_t... I>
-inline auto join_groups(uint64_t const (&groups)[N], std::index_sequence<I...>) {
-    return std::array<uint64_t, sizeof...(I)>{joined_word<B, I>(groups)...};
-}
 template <size_t N>
 inline void write_words(uint64_t* destination, unsigned shift, std::array<uint64_t, N> const& words) {
     if (shift == 0) {
@@ -112,21 +81,32 @@ inline auto pack_batch(char const* sequence) {
     uint8_t codes[N];
     for (size_t j = 0; j != N; ++j) codes[j] = batch_mapper<Kmer>::convert(sequence[j]);
     uint64_t groups[N / 8];
-#if defined(__BMI2__)
-    std::memcpy(groups, codes, sizeof(groups));
-    // Select the low B bits from each byte.
-    constexpr uint64_t mask = uint64_t(0x0101010101010101) * ((1u << B) - 1);
-    for (size_t j = 0; j != N / 8; ++j) groups[j] = _pext_u64(groups[j], mask);
-#else
-    // Construct byte lanes explicitly so this also works on big-endian machines.
-    for (size_t g = 0; g != N / 8; ++g) {
-        groups[g] = 0;
-        for (unsigned j = 0; j != 8; ++j)
-            groups[g] |= uint64_t(codes[8 * g + j]) << (8 * j);
-    }
-    compact_bytes<B>(groups);
+    using lanes [[gnu::vector_size(32)]] = uint64_t;
+    lanes blocks[N / 32];
+    std::memcpy(blocks, codes, N);
+    for (auto& words : blocks) {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        for (unsigned i = 0; i < 4; ++i) words[i] = __builtin_bswap64(words[i]);
 #endif
-    return join_groups<B>(groups, std::make_index_sequence<N * B / 64>{});
+        auto merge = [&](unsigned group, uint64_t mask) {
+            words = (words & mask) | ((words >> (group * (8 - B))) & (mask << (group * B)));
+        };
+        // Merge adjacent groups of one, two, and four byte lanes.
+        merge(1, ((uint64_t(1) << B) - 1) * 0x0001000100010001ULL);
+        merge(2, ((uint64_t(1) << (2 * B)) - 1) * 0x0000000100000001ULL);
+        merge(4, (uint64_t(1) << (4 * B)) - 1);
+    }
+    std::memcpy(groups, blocks, N);
+    std::array<uint64_t, N * B / 64> result{};
+    // Unroll the output words so their group indices and shifts become constants.
+#pragma GCC unroll 16
+    for (size_t i = 0; i < result.size(); ++i) {
+        const size_t first = 64 * i / (8 * B);
+        result[i] = groups[first] >> (64 * i % (8 * B));
+        for (size_t j = first + 1; j < N / 8 && j * (8 * B) < 64 * (i + 1); ++j)
+            result[i] |= groups[j] << (j * (8 * B) - 64 * i);
+    }
+    return result;
 }
 // Keep the bulk loop out of encode_strings so short records retain its small loop.
 template <typename Kmer>
