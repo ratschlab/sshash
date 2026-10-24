@@ -1,6 +1,7 @@
 #include "include/util.hpp"
 #include "external/gz/zip_stream.hpp"
 #include <cstring>
+#include <type_traits>
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -19,7 +20,9 @@ inline uint64_t pack_word(char const* sequence) {
     if constexpr (bits_per_char <= 8) {
         constexpr uint64_t vector_bytes = chars_per_word <= 32 ? 32 : 64;
         // A vector lets GCC insert mapped bytes directly into registers.
-        using byte_vector [[gnu::vector_size(vector_bytes)]] = uint8_t;
+        using bytes32 [[gnu::vector_size(32)]] = uint8_t;
+        using bytes64 [[gnu::vector_size(64)]] = uint8_t;
+        using byte_vector = std::conditional_t<vector_bytes == 32, bytes32, bytes64>;
         byte_vector codes{};
         for (uint64_t j = 0; j != chars_per_word; ++j) {
             codes[j] = Kmer::char_to_uint(sequence[j]);
