@@ -166,6 +166,20 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
             }
 #endif
         }
+#if defined(__AVX2__)
+        if constexpr (Kmer::bits_per_char != 2)
+#endif
+        {
+            constexpr uint64_t chars_per_word = 64 / Kmer::bits_per_char;
+            constexpr uint64_t bits_per_word = chars_per_word * Kmer::bits_per_char;
+            for (; i + chars_per_word <= n; i += chars_per_word) {
+                uint64_t word = 0;
+                for (uint64_t j = 0; j != chars_per_word; ++j) {
+                    word |= uint64_t(Kmer::char_to_uint(sequence[i + j])) << (j * Kmer::bits_per_char);
+                }
+                strings_builder.append_bits(word, bits_per_word);
+            }
+        }
         for (; i < n; ++i) {
             strings_builder.append_bits(Kmer::char_to_uint(sequence[i]), Kmer::bits_per_char);
         }
