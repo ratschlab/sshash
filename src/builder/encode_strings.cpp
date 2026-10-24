@@ -98,12 +98,12 @@ inline auto pack_batch(char const* sequence) {
     }
     std::memcpy(groups, blocks, N);
     std::array<uint64_t, N * B / 64> result{};
-    // Unroll the output words so their group indices and shifts become constants.
+    // A 128-character batch produces at most 16 words; unroll to keep shifts constant.
 #pragma GCC unroll 16
     for (size_t i = 0; i < result.size(); ++i) {
         const size_t first = 64 * i / (8 * B);
         result[i] = groups[first] >> (64 * i % (8 * B));
-        for (size_t j = first + 1; j < N / 8 && j * (8 * B) < 64 * (i + 1); ++j)
+        for (size_t j = first + 1; j * (8 * B) < 64 * (i + 1); ++j)
             result[i] |= groups[j] << (j * (8 * B) - 64 * i);
     }
     return result;
