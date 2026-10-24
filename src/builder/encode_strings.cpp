@@ -181,17 +181,8 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
         uint64_t i = 0;
         constexpr uint64_t chars_per_word = 64 / Kmer::bits_per_char;
         constexpr uint64_t bits_per_word = chars_per_word * Kmer::bits_per_char;
-        const uint64_t full_chars = n / chars_per_word * chars_per_word;
-        uint64_t bit_pos = strings_builder.num_bits();
-        // Grow once for all complete chunks, preserving the previous record's partial word.
-        strings_builder.resize(bit_pos + full_chars * Kmer::bits_per_char);
-        auto* output = strings_builder.data().data();
-        for (; i != full_chars; i += chars_per_word, bit_pos += bits_per_word) {
-            const uint64_t word = util::pack_word<Kmer>(sequence.data() + i);
-            if constexpr (bits_per_word != 64) assert((word >> bits_per_word) == 0);
-            const unsigned shift = bit_pos % 64;
-            output[bit_pos / 64] |= word << shift;
-            if (shift + bits_per_word > 64) output[bit_pos / 64 + 1] = word >> (64 - shift);
+        for (; i + chars_per_word <= n; i += chars_per_word) {
+            strings_builder.append_bits(util::pack_word<Kmer>(sequence.data() + i), bits_per_word);
         }
         for (; i < n; ++i) {
             strings_builder.append_bits(Kmer::char_to_uint(sequence[i]), Kmer::bits_per_char);
