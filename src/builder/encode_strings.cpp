@@ -18,7 +18,7 @@ inline uint64_t pack_word(char const* sequence) {
     constexpr uint64_t chars_per_word = 64 / bits_per_char;
 #if defined(__AVX2__) && defined(__BMI2__)
     if constexpr (bits_per_char <= 8) {
-        constexpr uint64_t code_mask = ~(~uint64_t(0) << bits_per_char);
+        constexpr uint64_t code_mask = ~(uint64_t(-1) << bits_per_char);
         // A vector lets GCC insert mapped bytes directly into registers.
         using byte_vector [[gnu::vector_size(32)]] = uint8_t;
         byte_vector codes{};
@@ -26,17 +26,20 @@ inline uint64_t pack_word(char const* sequence) {
             codes[j] = Kmer::char_to_uint(sequence[j]);
         }
         uint64_t word = 0;
-        if constexpr (bits_per_char >= 4) {
-            // Extract several complete character codes with each operation.
-            constexpr uint64_t byte_fields = 0x0101010101010101ULL * code_mask;
+        constexpr uint64_t codes_per_group = sizeof(uint64_t);
+        constexpr uint64_t num_groups = (chars_per_word + codes_per_group - 1) / codes_per_group;
+        if constexpr (num_groups < bits_per_char) {
+            // Compare PEXT groups with bit-plane passes, then extract complete codes.
+            constexpr uint64_t byte_fields = (UINT64_MAX / UINT8_MAX) * code_mask;
             using word_vector [[gnu::vector_size(32)]] = uint64_t;
             const auto byte_groups = (word_vector)codes;
-            for (uint64_t j = 0; j < chars_per_word; j += 8) {
-                word |= _pext_u64(byte_groups[j / 8], byte_fields) << (j * bits_per_char);
+            for (uint64_t j = 0; j < chars_per_word; j += codes_per_group) {
+                word |= _pext_u64(byte_groups[j / codes_per_group], byte_fields)
+                        << (j * bits_per_char);
             }
         } else {
             // Select the first bit of each complete character field.
-            constexpr uint64_t positions = (~uint64_t(0) >> (64 % bits_per_char)) / code_mask;
+            constexpr uint64_t positions = (uint64_t(-1) >> (64 % bits_per_char)) / code_mask;
             using lanes [[gnu::vector_size(32)]] = uint16_t;
             for (uint64_t bit = 0; bit != bits_per_char; ++bit) {
                 // Move this bit to each byte's high bit, then collect those bits.
