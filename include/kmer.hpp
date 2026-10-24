@@ -201,9 +201,7 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
         g    103     01100111 -> 10
         t    116     01110100 -> 11
     */
-    static uint64_t char_to_uint(unsigned char c) {
-        return ((c >> 1) ^ (c >> 2)) & 3;
-    }
+    static uint64_t char_to_uint(unsigned char c) { return ((c >> 1) ^ (c >> 2)) & 3; }
 #else
     /*
     char decimal  binary

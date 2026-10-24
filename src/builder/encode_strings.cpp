@@ -1,6 +1,5 @@
 #include "include/util.hpp"
 #include "external/gz/zip_stream.hpp"
-#include <cstring>
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -11,12 +10,15 @@ namespace sshash {
 
 namespace util {
 
+// Pack complete characters into the low bits of a 64-bit word.
 template <typename Kmer>
 inline uint64_t pack_word(char const* sequence) {
     constexpr uint64_t bits_per_char = Kmer::bits_per_char;
+    static_assert(bits_per_char >= 2, "String encoding requires at least two bits per character");
     constexpr uint64_t chars_per_word = 64 / bits_per_char;
 #if defined(__AVX2__) && defined(__BMI2__)
-    if constexpr (bits_per_char >= 2 && bits_per_char <= 8) {
+    if constexpr (bits_per_char <= 8) {
+        constexpr uint64_t code_mask = ~(~uint64_t(0) << bits_per_char);
         // A vector lets GCC insert mapped bytes directly into registers.
         using byte_vector [[gnu::vector_size(32)]] = uint8_t;
         byte_vector codes{};
@@ -26,21 +28,16 @@ inline uint64_t pack_word(char const* sequence) {
         uint64_t word = 0;
         if constexpr (bits_per_char >= 4) {
             // Extract several complete character codes with each operation.
-            constexpr uint64_t fields = 0x0101010101010101ULL * ((1u << bits_per_char) - 1);
+            constexpr uint64_t byte_fields = 0x0101010101010101ULL * code_mask;
+            using word_vector [[gnu::vector_size(32)]] = uint64_t;
+            const auto byte_groups = (word_vector)codes;
             for (uint64_t j = 0; j < chars_per_word; j += 8) {
-                uint64_t bytes;
-                std::memcpy(&bytes, reinterpret_cast<uint8_t const*>(&codes) + j, 8);
-                word |= _pext_u64(bytes, fields) << (j * bits_per_char);
+                word |= _pext_u64(byte_groups[j / 8], byte_fields) << (j * bits_per_char);
             }
         } else {
-            constexpr uint64_t positions = [] {
-                uint64_t mask = 0;
-                for (uint64_t j = 0; j != chars_per_word; ++j)
-                    mask |= uint64_t(1) << (j * bits_per_char);
-                return mask;
-            }();
+            // Select the first bit of each complete character field.
+            constexpr uint64_t positions = (~uint64_t(0) >> (64 % bits_per_char)) / code_mask;
             using lanes [[gnu::vector_size(32)]] = uint16_t;
-#pragma GCC unroll 8
             for (uint64_t bit = 0; bit != bits_per_char; ++bit) {
                 // Move this bit to each byte's high bit, then collect those bits.
                 const auto shifted = (lanes)codes << (7 - bit);
@@ -181,8 +178,17 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
         uint64_t i = 0;
         constexpr uint64_t chars_per_word = 64 / Kmer::bits_per_char;
         constexpr uint64_t bits_per_word = chars_per_word * Kmer::bits_per_char;
-        for (; i + chars_per_word <= n; i += chars_per_word) {
-            strings_builder.append_bits(util::pack_word<Kmer>(sequence.data() + i), bits_per_word);
+        const uint64_t full_chars = n / chars_per_word * chars_per_word;
+        uint64_t bit_pos = strings_builder.num_bits();
+        // Grow once for all complete chunks, preserving the previous record's partial word.
+        strings_builder.resize(bit_pos + full_chars * Kmer::bits_per_char);
+        auto* output = strings_builder.data().data();
+        for (; i != full_chars; i += chars_per_word, bit_pos += bits_per_word) {
+            const uint64_t word = util::pack_word<Kmer>(sequence.data() + i);
+            if constexpr (bits_per_word != 64) assert((word >> bits_per_word) == 0);
+            const unsigned shift = bit_pos % 64;
+            output[bit_pos / 64] |= word << shift;
+            if (shift + bits_per_word > 64) output[bit_pos / 64 + 1] = word >> (64 - shift);
         }
         for (; i < n; ++i) {
             strings_builder.append_bits(Kmer::char_to_uint(sequence[i]), Kmer::bits_per_char);
