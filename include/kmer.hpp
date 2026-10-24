@@ -49,10 +49,20 @@ struct uint_kmer_t {
     void drop_char() { drop(bits_per_char); }
     void drop_chars(uint16_t k) { drop(k * bits_per_char); }
 
-    void take(uint16_t b) { bits &= ~(~Kmer(0) << b); }
+    // Retain the low b bits; b must be smaller than the storage width.
+    void take(uint16_t b) {
+        assert(b < uint_kmer_bits);
+        bits &= ~(~Kmer(0) << b);
+    }
     void take64() { bits &= Kmer(uint64_t(-1)); }
     void take_char() { take(bits_per_char); }
-    void take_chars(uint16_t k) { take(k * bits_per_char); }
+    void take_chars(uint16_t k) {
+        assert(k <= max_k);
+        if constexpr (uint_kmer_bits % bits_per_char == 0) {
+            if (k == max_k) return;
+        }
+        take(k * bits_per_char);
+    }
 
     uint64_t pop64() {
         uint64_t res(*this);
@@ -101,7 +111,7 @@ struct alpha_kmer_t : uint_kmer_t<Kmer, BitsPerChar> {
     static constexpr uint8_t alphabet_size = std::char_traits<char>::length(Alphabet);
 
     static bool is_valid(char c);
-    static uint64_t char_to_uint(char c);
+    static uint64_t char_to_uint(unsigned char c);
     static char uint64_to_char(uint64_t x) { return alphabet[x]; }
 
     // Revcompl only makes sense for DNA, fallback to noop otherwise
@@ -138,6 +148,12 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
     // Use odd lengths for DNA to avoid dealing with self-complements
     static constexpr uint16_t max_k = base::max_k - !(base::max_k % 2);
     static constexpr uint16_t max_m = base::max_m - !(base::max_m % 2);
+
+    void take_chars(uint16_t k) {
+        assert(k <= max_k);
+        base::take(k * bits_per_char);
+    }
+
     /*
         This works with the map:
         A -> 00; C -> 01; G -> 11; T -> 10.
@@ -201,7 +217,7 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
         g    103     01100111 -> 10
         t    116     01110100 -> 11
     */
-    static uint64_t char_to_uint(char c) { return (((c >> 1) ^ (c >> 2)) & 3); }
+    static uint64_t char_to_uint(unsigned char c) { return ((c >> 1) ^ (c >> 2)) & 3; }
 #else
     /*
     char decimal  binary
@@ -215,7 +231,7 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
         g    103     01100.11.1 -> 11
         t    116     01110.10.0 -> 10
     */
-    static uint64_t char_to_uint(char c) { return (c >> 1) & 3; }
+    static uint64_t char_to_uint(unsigned char c) { return (c >> 1) & 3; }
 #endif
 
     /*
@@ -302,7 +318,7 @@ struct aa_uint_kmer_t : alpha_kmer_t<Kmer, 5, amino_acids> {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
     static bool is_valid(char c) { return ~char_to_aa[static_cast<unsigned char>(c)]; }
-    static uint64_t char_to_uint(char c) { return char_to_aa[static_cast<unsigned char>(c)]; }
+    static uint64_t char_to_uint(unsigned char c) { return char_to_aa[c]; }
 
     // For proteins, there's no reverse complement, so map each character to itself
     // This allows streaming_query to work with protein alphabets

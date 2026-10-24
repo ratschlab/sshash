@@ -107,6 +107,26 @@ if (SSHASH_BUILD_EXECUTABLES)
     target_link_libraries(test_lookup PRIVATE sshash_static)
     add_test(NAME lookup COMMAND test_lookup)
 
+    add_executable(test_encoded_endpoints test/test_encoded_endpoints.cpp)
+    target_link_libraries(test_encoded_endpoints PRIVATE sshash_static)
+    add_test(NAME encoded_endpoints COMMAND test_encoded_endpoints)
+
+    add_executable(test_encoded_boundaries test/test_encoded_boundaries.cpp)
+    target_link_libraries(test_encoded_boundaries PRIVATE sshash_static)
+    add_test(NAME encoded_boundaries COMMAND test_encoded_boundaries)
+
+    add_executable(test_heavy_buckets test/test_heavy_buckets.cpp)
+    target_link_libraries(test_heavy_buckets PRIVATE sshash_static)
+    add_test(NAME heavy_buckets COMMAND test_heavy_buckets)
+
+    add_executable(test_protein_lookup test/test_protein_lookup.cpp)
+    target_link_libraries(test_protein_lookup PRIVATE sshash_static)
+    add_test(NAME protein_lookup COMMAND test_protein_lookup)
+
+    add_executable(test_minimizer_positions test/test_minimizer_positions.cpp)
+    target_link_libraries(test_minimizer_positions PRIVATE sshash_static)
+    add_test(NAME minimizer_positions COMMAND test_minimizer_positions)
+
     add_executable(check test/check.cpp)
     target_link_libraries(check PRIVATE sshash_static)
 

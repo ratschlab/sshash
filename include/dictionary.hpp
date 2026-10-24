@@ -117,7 +117,7 @@ struct dictionary  //
     Offsets const& strings_offsets() const { return m_spss.strings_offsets; }
 
     /* Enumerate indexed positions of a canonical encoded m-mer, as absolute
-       base offsets. This includes all entries in a heavy-load bucket, but not
+       character offsets. This includes all entries in a heavy-load bucket, but not
        occurrences of the m-mer that were not selected as minimizers. */
     template <typename Callback>
     void call_minimizer_positions(uint64_t minimizer, Callback&& callback) const {
@@ -141,7 +141,7 @@ private:
             return callback(position);
         };
 
-        auto positions = m_ssi.lookup(minimizer);
+        auto positions = m_ssi.minimizer_candidates(minimizer);
         for (uint64_t i = 0; i < positions.size(); ++i, ++positions) {
             if (!emit(*positions)) break;
         }
