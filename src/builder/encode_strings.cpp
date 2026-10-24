@@ -30,6 +30,24 @@ inline uint64_t pack2bits(__m256i values) {
 }
 #endif
 
+template <typename Kmer>
+inline uint64_t pack_word(char const* sequence) {
+#if defined(__AVX2__)
+    if constexpr (Kmer::bits_per_char == 2) {
+        uint8_t codes[32];
+        for (uint64_t j = 0; j != 32; ++j) {
+            codes[j] = Kmer::char_to_uint(sequence[j]);
+        }
+        return pack2bits(_mm256_loadu_si256(reinterpret_cast<__m256i const*>(codes)));
+    }
+#endif
+    uint64_t word = 0;
+    for (uint64_t j = 0; j != 64 / Kmer::bits_per_char; ++j) {
+        word |= uint64_t(Kmer::char_to_uint(sequence[j])) << (j * Kmer::bits_per_char);
+    }
+    return word;
+}
+
 }  // namespace util
 
 template <typename Kmer, typename Offsets>
@@ -151,34 +169,10 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
         }
 
         uint64_t i = 0;
-        if constexpr (Kmer::bits_per_char == 2) {
-#if defined(__AVX2__)
-
-            /* process 32 bytes at a time */
-            for (; i + 32 <= n; i += 32) {
-                uint8_t codes[32];
-                for (uint64_t j = 0; j != 32; ++j) {
-                    codes[j] = Kmer::char_to_uint(sequence[i + j]);
-                }
-                __m256i values = _mm256_loadu_si256(reinterpret_cast<__m256i const*>(codes));
-                uint64_t word = util::pack2bits(values);
-                strings_builder.append_bits(word, 64);
-            }
-#endif
-        }
-#if defined(__AVX2__)
-        if constexpr (Kmer::bits_per_char != 2)
-#endif
-        {
-            constexpr uint64_t chars_per_word = 64 / Kmer::bits_per_char;
-            constexpr uint64_t bits_per_word = chars_per_word * Kmer::bits_per_char;
-            for (; i + chars_per_word <= n; i += chars_per_word) {
-                uint64_t word = 0;
-                for (uint64_t j = 0; j != chars_per_word; ++j) {
-                    word |= uint64_t(Kmer::char_to_uint(sequence[i + j])) << (j * Kmer::bits_per_char);
-                }
-                strings_builder.append_bits(word, bits_per_word);
-            }
+        constexpr uint64_t chars_per_word = 64 / Kmer::bits_per_char;
+        constexpr uint64_t bits_per_word = chars_per_word * Kmer::bits_per_char;
+        for (; i + chars_per_word <= n; i += chars_per_word) {
+            strings_builder.append_bits(util::pack_word<Kmer>(sequence.data() + i), bits_per_word);
         }
         for (; i < n; ++i) {
             strings_builder.append_bits(Kmer::char_to_uint(sequence[i]), Kmer::bits_per_char);
