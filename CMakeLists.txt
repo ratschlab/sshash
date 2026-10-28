@@ -127,6 +127,10 @@ if (SSHASH_BUILD_EXECUTABLES)
     target_link_libraries(test_minimizer_positions PRIVATE sshash_static)
     add_test(NAME minimizer_positions COMMAND test_minimizer_positions)
 
+    add_executable(test_malformed_input test/test_malformed_input.cpp)
+    target_link_libraries(test_malformed_input PRIVATE sshash_static)
+    add_test(NAME malformed_input COMMAND test_malformed_input)
+
     add_executable(check test/check.cpp)
     target_link_libraries(check PRIVATE sshash_static)
 
