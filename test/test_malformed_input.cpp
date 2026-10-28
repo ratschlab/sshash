@@ -74,6 +74,9 @@ int main() {
         expect_rejected(directory, "@a\n" + seq + "\n+\n" + std::string(30, 'I') + "\n",
                         "expected a FASTA header starting with '>' before sequence 1");
         expect_rejected(directory, ">a\n" + seq, "sequence 1 is not terminated by a newline");
+        expect_rejected(directory, ">a\n" + seq + "\n>b\n", "record 2 has a header but no sequence");
+        expect_rejected(directory, ">a\nACGTTGCAAGGCNTACCATGGTACCAGTTA\n",
+                        "sequence 1 has character 'N' at position 12, outside the alphabet");
     } catch (std::exception const& error) {
         std::cerr << error.what() << '\n';
         return 1;
