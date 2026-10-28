@@ -251,7 +251,7 @@ struct dna_uint_kmer_t : alpha_kmer_t<Kmer, 2, nucleotides> {
     }
 
     static inline bool is_valid(char c) {
-        return canonicalize_basepair_forward_map[static_cast<size_t>(c)];
+        return canonicalize_basepair_forward_map[static_cast<unsigned char>(c)];
     }
 };
 
@@ -277,7 +277,7 @@ struct aa_uint_kmer_t : alpha_kmer_t<Kmer, 5, amino_acids> {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
-    static bool is_valid(char c) { return ~char_to_aa[static_cast<size_t>(c)]; }
+    static bool is_valid(char c) { return ~char_to_aa[static_cast<unsigned char>(c)]; }
     static uint64_t char_to_uint(char c) { return char_to_aa[static_cast<size_t>(c)]; }
 
     // For proteins, there's no reverse complement, so map each character to itself

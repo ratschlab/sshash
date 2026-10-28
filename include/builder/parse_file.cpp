@@ -151,6 +151,11 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
                                          std::to_string(strings_offsets_builder.size() + 1) +
                                          " is not terminated by a newline");
             }
+            if (fmt == input_file_t::fasta) {
+                throw std::runtime_error("record " +
+                                         std::to_string(strings_offsets_builder.size() + 1) +
+                                         " has a header but no sequence");
+            }
             break;
         }
 
@@ -161,6 +166,14 @@ void dictionary_builder<Kmer, Offsets>::encode_strings(std::istream& is,
                                      std::to_string(strings_offsets_builder.size() + 1) +
                                      " has length " + std::to_string(n) +
                                      ", shorter than k = " + std::to_string(k));
+        }
+        for (uint64_t j = 0; j != n; ++j) {
+            if (!Kmer::is_valid(sequence[j])) {
+                throw std::runtime_error("sequence " +
+                                         std::to_string(strings_offsets_builder.size() + 1) +
+                                         " has character '" + sequence[j] + "' at position " +
+                                         std::to_string(j) + ", outside the alphabet");
+            }
         }
         max_len = n > max_len ? n : max_len;
         assert(strings_builder.num_bits() % Kmer::bits_per_char == 0);
