@@ -144,6 +144,36 @@ private:
     }
 };
 
+/*
+    Every run being merged is an open file and a memory mapping: merge at most
+    half as many runs as the process may have of either, leaving the rest to the
+    process, and at least two.
+*/
+static inline uint64_t merge_fan_in(uint64_t max_open_files, uint64_t max_map_count) {
+    return std::max<uint64_t>(std::min(max_open_files, max_map_count) / 2, 2);
+}
+
+/*
+    Raise the soft limit on open files to the hard limit, then return the merge
+    fan-in for the limits in effect (vm.max_map_count is read where available).
+*/
+static inline uint64_t max_merge_fan_in() {
+    uint64_t max_open_files = uint64_t(-1);
+    rlimit limit;
+    if (getrlimit(RLIMIT_NOFILE, &limit) == 0) {
+        if (limit.rlim_cur < limit.rlim_max) {
+            rlimit raised = limit;
+            raised.rlim_cur = limit.rlim_max;
+            if (setrlimit(RLIMIT_NOFILE, &raised) == 0) limit = raised;
+        }
+        if (limit.rlim_cur != RLIM_INFINITY) max_open_files = limit.rlim_cur;
+    }
+    uint64_t max_map_count = uint64_t(-1);
+    std::ifstream in("/proc/sys/vm/max_map_count");
+    if (uint64_t value; in >> value) max_map_count = value;
+    return merge_fan_in(max_open_files, max_map_count);
+}
+
 struct minimizers_tuples {
     minimizers_tuples() {}
     minimizers_tuples(build_configuration const& build_config)
@@ -217,11 +247,14 @@ struct minimizers_tuples {
         std::iota(ids.begin(), ids.end(), 0);
 
         /*
-            Every run being merged is an open file and a memory mapping, so merge
-            at most `fan_in` runs at a time into longer runs until the rest fit in
-            one final merge. The new runs take fresh ids.
+            Merge at most `fan_in` runs at a time into longer runs until the rest
+            fit in one final merge. The new runs take fresh ids.
         */
         const uint64_t fan_in = max_merge_fan_in();
+        if (m_build_config.verbose) {
+            std::cout << "merging " << ids.size() << " runs, at most " << fan_in << " at a time"
+                      << std::endl;
+        }
         while (ids.size() > fan_in) {
             std::vector<uint64_t> merged_ids;
             for (uint64_t i = 0; i < ids.size(); i += fan_in) {
@@ -332,19 +365,6 @@ private:
         for (uint64_t i = 0; i != num_runs; ++i) {
             std::remove(get_tmp_output_filename(ids[i]).c_str());
         }
-    }
-
-    /*
-        Use at most half of the soft limit on open files, leaving the rest to
-        the process, and stay well below the default vm.max_map_count (65530).
-    */
-    static uint64_t max_merge_fan_in() {
-        uint64_t fan_in = constants::max_merge_fan_in;
-        rlimit limit;
-        if (getrlimit(RLIMIT_NOFILE, &limit) == 0 and limit.rlim_cur != RLIM_INFINITY) {
-            fan_in = std::min<uint64_t>(fan_in, limit.rlim_cur / 2);
-        }
-        return std::max<uint64_t>(fan_in, 2);
     }
 
     std::string get_tmp_output_filename(uint64_t id) const {
