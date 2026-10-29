@@ -28,15 +28,32 @@ static void require(bool condition, std::string const& message) {
 }
 
 int main() {
-    /*
-        Every build thread flushes at least one sorted run of minimizer tuples,
-        so 49 threads write 49 runs. With at most 32 open files, the runs used
-        to be merged all at once and the build failed with "cannot open file";
-        they must now be merged 16 at a time (49 -> 4 -> final merge).
-    */
+    /* the fan-in follows the limits, so typical limits merge thousands of runs in one pass */
+    require(merge_fan_in(1024, 65530) == 512, "fan-in for 1024 open files");
+    require(merge_fan_in(1048576, 65530) == 32765, "fan-in for the default vm.max_map_count");
+    require(merge_fan_in(1048576, 262144) == 131072, "fan-in for 1048576 open files");
+    require(merge_fan_in(3, 65530) == 2, "fan-in is at least 2");
+
+    /* a low soft limit is raised to the hard limit before merging */
     rlimit limit;
     getrlimit(RLIMIT_NOFILE, &limit);
-    limit.rlim_cur = 32;
+    if (limit.rlim_max != RLIM_INFINITY and limit.rlim_max > 32) {
+        limit.rlim_cur = 32;
+        require(setrlimit(RLIMIT_NOFILE, &limit) == 0, "cannot lower the soft RLIMIT_NOFILE");
+        uint64_t fan_in = max_merge_fan_in();
+        rlimit raised;
+        getrlimit(RLIMIT_NOFILE, &raised);
+        require(raised.rlim_cur == limit.rlim_max, "soft RLIMIT_NOFILE not raised to the hard limit");
+        require(fan_in > 16, "fan-in ignores the raised soft limit");
+    }
+
+    /*
+        Every build thread flushes at least one sorted run of minimizer tuples,
+        so 49 threads write 49 runs. With at most 32 open files (soft and hard),
+        the runs used to be merged all at once and the build failed with "cannot
+        open file"; they must now be merged 16 at a time (49 -> 4 -> final merge).
+    */
+    limit.rlim_cur = limit.rlim_max = 32;
     require(setrlimit(RLIMIT_NOFILE, &limit) == 0, "cannot lower RLIMIT_NOFILE");
 
     const uint64_t k = 31;

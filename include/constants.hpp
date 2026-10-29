@@ -4,7 +4,6 @@ namespace sshash::constants {
 
 constexpr uint64_t invalid_uint64 = uint64_t(-1);
 constexpr uint64_t default_ram_limit_in_GiB = 8;
-constexpr uint64_t max_merge_fan_in = 1024;  // runs merged at once when building
 constexpr uint64_t seed = 1;
 
 /* for PTHash */
