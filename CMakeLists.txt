@@ -103,6 +103,10 @@ if (SSHASH_BUILD_EXECUTABLES)
     target_link_libraries(test_minimizer PRIVATE sshash_static)
     add_test(NAME minimizer COMMAND test_minimizer)
 
+    add_executable(test_merge_fan_in test/test_merge_fan_in.cpp)
+    target_link_libraries(test_merge_fan_in PRIVATE sshash_static)
+    add_test(NAME merge_fan_in COMMAND test_merge_fan_in)
+
     add_executable(check test/check.cpp)
     target_link_libraries(check PRIVATE sshash_static)
 
