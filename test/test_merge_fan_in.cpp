@@ -27,7 +27,10 @@ static void require(bool condition, std::string const& message) {
     if (!condition) throw std::runtime_error(message);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    require(argc == 1 or argc == 3, "expected optional file limit and thread count");
+    const uint64_t file_limit = argc == 3 ? std::stoull(argv[1]) : 32;
+    const uint64_t num_threads = argc == 3 ? std::stoull(argv[2]) : 49;
     /* the fan-in follows the limits, so typical limits merge thousands of runs in one pass */
     require(merge_fan_in(1024, 65530) == 512, "fan-in for 1024 open files");
     require(merge_fan_in(1048576, 65530) == 32765, "fan-in for the default vm.max_map_count");
@@ -53,7 +56,7 @@ int main() {
         the runs used to be merged all at once and the build failed with "cannot
         open file"; they must now be merged 16 at a time (49 -> 4 -> final merge).
     */
-    limit.rlim_cur = limit.rlim_max = 32;
+    limit.rlim_cur = limit.rlim_max = file_limit;
     require(setrlimit(RLIMIT_NOFILE, &limit) == 0, "cannot lower RLIMIT_NOFILE");
 
     const uint64_t k = 31;
@@ -76,7 +79,7 @@ int main() {
         config.k = k;
         config.m = 15;
         config.verbose = false;
-        config.num_threads = 49;
+        config.num_threads = num_threads;
         config.ram_limit_in_GiB = 1;
         config.tmp_dirname = directory.path.string();
         dictionary<dna_uint_kmer_t<uint64_t>, decoded_offsets> dict;

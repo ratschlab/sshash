@@ -3,6 +3,8 @@
 #include <vector>
 #include <atomic>
 #include <numeric>
+#include <mutex>
+#include <condition_variable>
 
 #include <sys/resource.h>
 
@@ -185,7 +187,11 @@ struct minimizers_tuples {
         init();
     }
 
-    void init() { m_num_files_to_merge = 0; }
+    void init() {
+        m_num_files_to_merge = 0;
+        // Run writers need the same descriptor headroom as the later merge.
+        m_max_open_outputs = max_merge_fan_in();
+    }
 
     void sort_and_flush(std::vector<minimizer_tuple>& buffer) {
         parallel_sort(buffer, m_build_config.num_threads,
@@ -198,6 +204,7 @@ struct minimizers_tuples {
         if (m_build_config.verbose) {
             std::cout << "saving to file '" << tmp_output_filename << "'..." << std::endl;
         }
+        output_slot slot(*this);
         std::ofstream out(tmp_output_filename.c_str(), std::ofstream::binary);
         if (!out.is_open()) throw std::runtime_error("cannot open file");
         out.write(reinterpret_cast<char const*>(buffer.data()),
@@ -313,6 +320,37 @@ struct minimizers_tuples {
     void remove_tmp_file() { std::remove(get_minimizers_filename().c_str()); }
 
 private:
+    // Keep tuple generation and sorting parallel. Only wait when too many
+    // temporary output files would be open at once. Release after stream close,
+    // including when opening or writing throws.
+    struct output_slot {
+        explicit output_slot(minimizers_tuples& owner) : m_owner(owner) {
+            std::unique_lock<std::mutex> lock(m_owner.m_output_mutex);
+            m_owner.m_output_ready.wait(lock, [&] {
+                return m_owner.m_open_outputs < m_owner.m_max_open_outputs;
+            });
+            ++m_owner.m_open_outputs;
+        }
+
+        ~output_slot() {
+            {
+                std::lock_guard<std::mutex> lock(m_owner.m_output_mutex);
+                --m_owner.m_open_outputs;
+            }
+            m_owner.m_output_ready.notify_one();
+        }
+
+        output_slot(output_slot const&) = delete;
+        output_slot& operator=(output_slot const&) = delete;
+
+    private:
+        minimizers_tuples& m_owner;
+    };
+
+    std::mutex m_output_mutex;
+    std::condition_variable m_output_ready;
+    uint64_t m_open_outputs = 0;
+    uint64_t m_max_open_outputs = 1;
     std::atomic<uint64_t> m_num_files_to_merge;
     uint64_t m_num_minimizers;
     uint64_t m_num_minimizer_positions;
