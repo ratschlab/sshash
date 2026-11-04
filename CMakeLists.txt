@@ -103,13 +103,11 @@ if (SSHASH_BUILD_EXECUTABLES)
     target_link_libraries(test_minimizer PRIVATE sshash_static)
     add_test(NAME minimizer COMMAND test_minimizer)
 
-    add_executable(test_orientation_preserving test/test_orientation_preserving.cpp)
-    target_link_libraries(test_orientation_preserving PRIVATE sshash_static)
-    add_test(NAME orientation_preserving COMMAND test_orientation_preserving ${CMAKE_CURRENT_BINARY_DIR}/orientation-test-data)
-
-    add_executable(test_orientation_compatibility test/test_orientation_compatibility.cpp)
-    target_link_libraries(test_orientation_compatibility PRIVATE sshash_static)
-    add_test(NAME orientation_compatibility COMMAND test_orientation_compatibility ${CMAKE_CURRENT_BINARY_DIR}/compatibility-test-data ${CMAKE_CURRENT_SOURCE_DIR}/test/data/orientation-v6)
+    # Keep independently contributed regression targets in separate files.
+    file(GLOB SSHASH_TEST_REGISTRATIONS "${CMAKE_CURRENT_SOURCE_DIR}/test/cmake/*.cmake")
+    foreach(registration IN LISTS SSHASH_TEST_REGISTRATIONS)
+        include("${registration}")
+    endforeach()
 
     add_executable(check test/check.cpp)
     target_link_libraries(check PRIVATE sshash_static)
