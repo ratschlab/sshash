@@ -42,7 +42,8 @@ struct dictionary  //
         `lookup_result::kmer_orientation`, which of the two was found. Pass
         `check_reverse_complement = false` to restrict the answer to kmers
         occurring in forward orientation. If the first match is reversed, this
-        may scan the remaining indexed minimizer positions for a forward match.
+        may scan the remaining indexed minimizer positions for a forward match
+        in legacy indexes. New BASIC indexes use strand-specific heavy keys.
     */
     lookup_result lookup(char const* string_kmer, bool check_reverse_complement = true) const;
     lookup_result lookup(Kmer uint_kmer, bool check_reverse_complement = true) const;
@@ -186,6 +187,12 @@ private:
         visitor.visit(t.m_spss);
         visitor.visit(t.m_ssi);
         visitor.visit(t.m_weights);
+        // v6 stored canonical heavy keys. v7 records the key policy explicitly.
+        if (t.m_vnum.x >= 7) {
+            visitor.visit(t.m_ssi.strand_specific);
+        } else if constexpr (!std::is_const_v<std::remove_reference_t<T>>) {
+            t.m_ssi.strand_specific = false;
+        }
     }
 
     essentials::version_number m_vnum;
@@ -201,7 +208,7 @@ private:
     weights m_weights;
 
     lookup_result lookup(Kmer uint_kmer, Kmer uint_kmer_rc, minimizer_info mini_info,
-                         typename spss_type::bucket_cache* cache = nullptr) const;
+                         typename spss_type::bucket_cache* cache = nullptr, bool forward_only = false) const;
 
     void forward_neighbours(Kmer suffix, neighbourhood<Kmer>& res,
                             bool check_reverse_complement) const;

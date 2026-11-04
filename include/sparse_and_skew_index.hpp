@@ -78,6 +78,8 @@ private:
 template <typename Kmer>
 struct sparse_and_skew_index  //
 {
+    bool strand_specific = false;
+
     struct bucket_iterator {
         bucket_iterator(sparse_and_skew_index const* ssi, uint64_t pos, uint64_t size,
                         bucket_t bucket_type)
@@ -117,7 +119,7 @@ struct sparse_and_skew_index  //
         uint64_t code = codewords.lookup(mini_info.minimizer);
         if (!minimizer_codeword::is_heavy(code)) return sparse_bucket(code);
         const Kmer uint_kmer_canon = std::min(uint_kmer, uint_kmer_rc);
-        return {this, ski.lookup(uint_kmer_canon, code), 1, bucket_t::HEAVYLOAD};
+        return {this, ski.lookup(strand_specific ? uint_kmer : uint_kmer_canon, code), 1, bucket_t::HEAVYLOAD};
     }
 
     // Candidate positions for a minimizer, without a full-kmer discriminator.

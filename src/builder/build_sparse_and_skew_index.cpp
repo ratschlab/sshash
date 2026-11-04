@@ -78,6 +78,8 @@ void dictionary_builder<Kmer, Offsets>::build_sparse_and_skew_index(
     strings_offsets_builder.build(d.m_spss.strings_offsets);
     strings_builder.build(d.m_spss.strings);
 
+    d.m_ssi.strand_specific = build_config.allow_reverse_complement_duplicates && Kmer::has_reverse_complement;
+
     /* step 1. build sparse index */
     assert(buckets_stats.num_buckets() == num_minimizers);
 
@@ -383,10 +385,9 @@ void dictionary_builder<Kmer, Offsets>::build_sparse_and_skew_index(
 
                     auto& F = mphfs[partition_id];
                     if (build_config.allow_reverse_complement_duplicates and Kmer::has_reverse_complement) {
-                        // BASIC graphs retain both orientations in the SPSS,
-                        // while the skew index uses canonical keys. Every
-                        // minimizer occurrence remains in heavy_load_buckets
-                        // for forward-only lookup of the other orientation.
+                        // BASIC graphs retain both orientations as distinct
+                        // keys. Deduplicate exact forward keys here; the graph
+                        // builder separately checks for duplicate input nodes.
                         auto distinct_kmers = kmers;
                         std::sort(distinct_kmers.begin(), distinct_kmers.end());
                         distinct_kmers.erase(std::unique(distinct_kmers.begin(), distinct_kmers.end()),
@@ -453,11 +454,11 @@ void dictionary_builder<Kmer, Offsets>::build_sparse_and_skew_index(
                     d.m_spss.strings, k, Kmer::bits_per_char * starting_pos_of_super_kmer);
                 for (uint64_t i = 0; i != mt.num_kmers_in_super_kmer; ++i) {
                     auto kmer = it.get();
-                    /* take the canonical kmer: a kmer and its reverse complement
-                       share a bucket, hence a skew-index partition */
+                    /* Both orientations share a minimizer bucket. BASIC indexes
+                       distinguish their full-kmer keys within that bucket. */
                     auto kmer_rc = kmer;
                     kmer_rc.reverse_complement_inplace(k);
-                    kmers.push_back(std::min(kmer, kmer_rc));
+                    kmers.push_back(d.m_ssi.strand_specific ? kmer : std::min(kmer, kmer_rc));
                     positions_in_bucket.push_back(pos_in_bucket);
                     it.next();
                 }
