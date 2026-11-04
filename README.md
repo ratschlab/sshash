@@ -45,7 +45,7 @@ If a string identifier is specified for a navigational query (rather than a k-me
 
 If you are interested in a **membership-only** version of SSHash, have a look at [SSHash-Lite](https://github.com/jermp/sshash-lite). It also works for input files with duplicate k-mers (e.g., [matchtigs](https://github.com/algbio/matchtigs) [5]). For a query sequence S and a given coverage threshold E in [0,1], the sequence is considered to be present in the dictionary if at least E*(|S|-k+1) of the k-mers of S are positive.
 
-**NOTE**: It is assumed that two k-mers being the *reverse complement* of each other are the same.
+**NOTE**: By default, two k-mers that are reverse complements of each other are treated as the same. The C++ API also provides an optional orientation-preserving mode, described below.
 
 #### Table of contents
 * [Compiling the Code](#compiling-the-code)
@@ -206,9 +206,10 @@ if your queries are to be read from a (multi-line) FASTA file.
 
     ./sshash query -i salmonella_100.sshash -q ../data/queries/SRR5833294.10K.fastq.gz
 
-A k-mer and its reverse complement share a bucket. The default lookup checks
-both orientations with a single bucket probe and reports which was found in
-`kmer_orientation`. There is no `--canonical` indexing flag.
+A k-mer and its reverse complement always share a bucket, so a lookup costs a
+single bucket probe and reports, in `kmer_orientation`, which of the two was
+found. This is the default indexing modality. The C++ orientation-preserving option
+can keep the two orientations as distinct keys.
 
 Use `lookup(kmer, false)` for forward-only C++ lookup. If the initial match is
 reversed, this may scan the remaining indexed minimizer positions for a forward match.
@@ -317,6 +318,13 @@ Benchmarks
 ----------
 
 The directory [`benchmarks`](/benchmarks) includes some performance benchmarks.
+
+
+### Preserving input orientation (C++ API)
+
+Applications that assign distinct IDs to a DNA k-mer and its reverse complement can set `build_configuration::preserve_orientation = true` before building a dictionary. Exact duplicate k-mers remain unsupported. `lookup(kmer, false)` then returns the ID of the stored forward k-mer, or a miss if only its reverse complement is present. With reverse-complement matching enabled, lookup prefers the forward occurrence when both are present.
+
+This option indexes heavy buckets with oriented keys and verifies each candidate against the stored sequence. It avoids scanning a heavy bucket to recover the other orientation. The default mode retains reverse-complement equivalence and writes the existing v6 format. Orientation-preserving dictionaries use v7 and require this reader; existing v6 dictionaries remain readable.
 
 References
 ----------
