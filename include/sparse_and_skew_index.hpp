@@ -134,7 +134,7 @@ struct sparse_and_skew_index  //
         }
 
         assert(status == bucket_t::HEAVYLOAD);  // minimizer is part of the skew index
-        const Kmer uint_kmer_canon = std::min(uint_kmer, uint_kmer_rc);
+        const Kmer uint_kmer_canon = strand_specific ? uint_kmer : std::min(uint_kmer, uint_kmer_rc);
         uint64_t offset = ski.lookup(uint_kmer_canon, code);
         return {this, offset, 1, bucket_t::HEAVYLOAD};
     }
@@ -155,6 +155,7 @@ struct sparse_and_skew_index  //
         visit_impl(visitor, *this);
     }
 
+    bool strand_specific = false;
     minimizers_control_map codewords;
     essentials::owning_span<uint32_t> begin_buckets_of_size;
     bits::compact_vector mid_load_buckets;
