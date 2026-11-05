@@ -153,7 +153,7 @@ private:
     typename Dict::spss_type::bucket_cache m_bucket_cache;
 
     /* Whether the minimizer of the last seed is its own reverse complement
-       (possible for even m only). Rarely needed, so computed on demand. */
+       (also possible for odd m with DNA5). Rarely needed, so computed on demand. */
     bool self_rc_minimizer() const {
         if constexpr (kmer_t::has_reverse_complement) {
             return kmer_t::reverse_complement_mmer(m_last_seed_mini_info.minimizer, m_m) ==
@@ -195,7 +195,7 @@ private:
                    locus L - (k - m - pos_in_kmer) hosts the reverse
                    complement of the minimizer occurrence, not the occurrence
                    itself, so it is excluded too -- unless the minimizer is
-                   its own reverse complement (possible for even m only), in
+                   its own reverse complement (also possible for odd m with DNA5), in
                    which case we fall through to the verification below.
                    Only a singleton bucket admits this free skip: a larger
                    bucket has candidate loci the failed extension never

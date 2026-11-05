@@ -57,6 +57,33 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    auto check_dna5 = [](auto word) {
+        using type = decltype(word);
+        for (uint64_t length = 1; length <= type::max_k; ++length) {
+            std::string input(length, 'N');
+            for (uint64_t i = 0; i < length; ++i) input[i] = "ACGTN"[i % 5];
+            auto packed = util::string_to_uint_kmer<type>(input.data(), length);
+            std::string expected(length, ' ');
+            type::compute_reverse_complement(input.data(), expected.data(), length);
+            packed.reverse_complement_inplace(length);
+            expect(util::uint_kmer_to_string(packed, length), expected);
+            packed.reverse_complement_inplace(length);
+            expect(util::uint_kmer_to_string(packed, length), input);
+            if (length <= type::max_m) {
+                auto value = util::string_to_uint_kmer<type>(input.data(), length);
+                value.reverse_complement_inplace(length);
+                expect(type::reverse_complement_mmer(uint64_t(
+                    util::string_to_uint_kmer<type>(input.data(), length)), length), uint64_t(value));
+            }
+        }
+    };
+    check_dna5(dna5_uint_kmer_t<uint64_t>{});
+    check_dna5(dna5_uint_kmer_t<__uint128_t>{});
+    for (unsigned c = 0; c < 256; ++c) {
+        bool valid = std::string("ACGTUNacgtun").find(char(c)) != std::string::npos;
+        expect(dna5_uint_kmer_t<uint64_t>::is_valid(char(c)), valid);
+    }
+
     using dna = dna_uint_kmer_t<uint64_t>;
     using protein = aa_uint_kmer_t<uint64_t>;
     for (unsigned byte = 128; byte < 256; ++byte) {

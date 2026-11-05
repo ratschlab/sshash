@@ -86,6 +86,18 @@ void check(std::filesystem::path const& directory, std::vector<std::string> cons
                             "streaming lookup differs from direct lookup");
                 }
             }
+            if (check_stream && Kmer::has_reverse_complement) {
+                std::string rc(string.size(), ' ');
+                Kmer::compute_reverse_complement(string.data(), rc.data(), string.size());
+                streaming_query<decltype(dict)> reverse_stream(&dict);
+                for (uint64_t i = 0; i + k <= rc.size(); ++i) {
+                    auto result = dict.lookup(rc.data() + i);
+                    require(result.kmer_id == expected_id - i - 1,
+                            "reverse-complement lookup lost the stored ID");
+                    require(equal_lookup_result(result, reverse_stream.lookup(rc.data() + i)),
+                            "reverse streaming lookup differs from direct lookup");
+                }
+            }
         }
     };
     verify();
@@ -143,6 +155,17 @@ int main() {
         check<aa_uint_kmer_t<uint64_t>, decoded_offsets>(directory,
             {"MKWVTFISRLDPQEAHNYCG"}, 3, 1, true);
         check<aa_uint_kmer_t<__uint128_t>, encoded_offsets>(directory, protein, 21, 3, true);
+        // All DNA5 3-mers include N, reverse-complement pairs and odd-length
+        // self-complements. Check IDs before and after serialization.
+        std::vector<std::string> dna5_kmers;
+        for (char a : std::string("ACGTN")) for (char b : std::string("ACGTN"))
+            for (char c : std::string("ACGTN")) dna5_kmers.push_back(std::string{a,b,c});
+        check<dna5_uint_kmer_t<uint64_t>, decoded_offsets>(directory, dna5_kmers, 3, 1, false);
+        check<dna5_uint_kmer_t<uint64_t>, encoded_offsets>(directory, dna5_kmers, 3, 1, false);
+        check<dna5_uint_kmer_t<uint64_t>, decoded_offsets>(directory,
+            {"ACGNT", "ANT"}, 3, 1, true);
+        check<dna5_uint_kmer_t<__uint128_t>, encoded_offsets>(directory,
+            {"ACGTNACCGNTTGNCGTANCGTNNACGTACGTN"}, 23, 3, true);
         // Dense protein buckets require more control bits than sparse buckets.
         std::vector<std::string> protein_kmers;
         const std::string alphabet = "ACDEFGHIKLMNPQRSTVWY";
