@@ -109,7 +109,14 @@ struct sparse_and_skew_index  //
         bits::compact_vector::iterator m_it;
     };
 
-    bucket_iterator lookup(const Kmer uint_kmer,                  //
+    bucket_iterator lookup(Kmer kmer, Kmer rc, minimizer_info mini) const {
+        return strand_specific ? lookup_impl<true>(kmer, rc, mini)
+                               : lookup_impl<false>(kmer, rc, mini);
+    }
+private:
+    template <typename, typename> friend struct dictionary;
+    template <bool Oriented>
+    bucket_iterator lookup_impl(const Kmer uint_kmer,                  //
                            const Kmer uint_kmer_rc,               //
                            const minimizer_info mini_info) const  //
     {
@@ -134,11 +141,12 @@ struct sparse_and_skew_index  //
         }
 
         assert(status == bucket_t::HEAVYLOAD);  // minimizer is part of the skew index
-        const Kmer uint_kmer_canon = strand_specific ? uint_kmer : std::min(uint_kmer, uint_kmer_rc);
+        const Kmer uint_kmer_canon = Oriented ? uint_kmer : std::min(uint_kmer, uint_kmer_rc);
         uint64_t offset = ski.lookup(uint_kmer_canon, code);
         return {this, offset, 1, bucket_t::HEAVYLOAD};
     }
 
+public:
     uint64_t num_bits() const {
         return codewords.num_bits() +
                8 * (essentials::vec_bytes(begin_buckets_of_size) + mid_load_buckets.num_bytes()) +
